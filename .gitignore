@@ -1,0 +1,24 @@
+# 引擎内部资源（只读，不属于用户项目）
+engine-docs/
+examples/
+templates/
+urhox-libs/
+schemas/
+prompts/
+.claude/
+.emmylua/
+lua-tools/
+CLAUDE.md
+
+# 构建产物和临时文件
+dist/
+.build/
+.tmp/
+.project/
+logs/
+
+# 系统文件
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
