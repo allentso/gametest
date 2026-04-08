@@ -27,7 +27,7 @@ function BeastAI.update(beast, dt, playerX, playerY, map)
         end
 
     elseif state == "wander" then
-        local arrived = BeastAI.moveToward(beast, beast.wanderTarget, dt, beast.baseSpeed or 1.5)
+        local arrived = BeastAI.moveToward(beast, beast.wanderTarget, dt, beast.baseSpeed or 1.5, map)
         if arrived then
             beast.aiState = "idle"
             beast.idleDuration = 2 + math.random() * 3
@@ -82,7 +82,7 @@ function BeastAI.update(beast, dt, playerX, playerY, map)
     end
 end
 
-function BeastAI.moveToward(beast, target, dt, speed)
+function BeastAI.moveToward(beast, target, dt, speed, map)
     if not target then return true end
     local dx = target.x - beast.x
     local dy = target.y - beast.y
@@ -90,8 +90,14 @@ function BeastAI.moveToward(beast, target, dt, speed)
     if dist < 0.1 then return true end
     beast.facing = math.atan2(dy, dx)
     local step = math.min(speed * dt, dist)
-    beast.x = beast.x + (dx / dist) * step
-    beast.y = beast.y + (dy / dist) * step
+    local mx = (dx / dist) * step
+    local my = (dy / dist) * step
+    if map then
+        CollisionSystem.tryMove(beast, mx, my, map)
+    else
+        beast.x = beast.x + mx
+        beast.y = beast.y + my
+    end
     return false
 end
 

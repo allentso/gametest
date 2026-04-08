@@ -13,12 +13,12 @@ local InkTileRenderer = {}
 --- 每种地形的底色配置 { color, innerR, outerR, alpha }
 --- outerR 拉到 1.4~1.6 倍 ppu，确保相邻瓦片充分重叠消除网格感
 local BASE_WASH = {
-    grass  = function(P) return P.jade,     0.05, 1.50, 0.10 end,
-    rock   = function(P) return P.inkMedium, 0.08, 1.40, 0.12 end,
-    water  = function(P) return P.azure,    0.05, 1.55, 0.10 end,
-    path   = function(P) return { r = 0.60, g = 0.50, b = 0.35 }, 0.05, 1.40, 0.07 end,
-    bamboo = function(P) return P.jade,     0.05, 1.45, 0.08 end,
-    danger = function(P) return P.miasmaDark, 0.05, 1.45, 0.10 end,
+    grass  = function(P) return P.jade,     0.05, 1.50, 0.25 end,
+    rock   = function(P) return P.inkMedium, 0.08, 1.40, 0.30 end,
+    water  = function(P) return P.azure,    0.05, 1.55, 0.28 end,
+    path   = function(P) return { r = 0.60, g = 0.50, b = 0.35 }, 0.05, 1.40, 0.18 end,
+    bamboo = function(P) return P.jade,     0.05, 1.45, 0.22 end,
+    danger = function(P) return P.miasmaDark, 0.05, 1.45, 0.28 end,
 }
 
 --- Pass 1: 绘制瓦片底色晕染（大半径，重叠产生连续画面）
@@ -142,43 +142,59 @@ function InkTileRenderer.drawWaterDetail(vg, tile, sx, sy, ppu, t, alphaScale)
     nvgRestore(vg)
 end
 
---- 竹林细节: 隔格绘制 1 根竹竿 + 少量竹节，避免密集阵列感
+--- 竹林细节: 每格绘制 2-3 根竹竿 + 竹节 + 竹叶簇，形成密竹林
 function InkTileRenderer.drawBambooDetail(vg, tile, sx, sy, ppu, t, alphaScale)
     local seed = tile.seed or 0
-    -- 只有约 60% 的竹林格子画竹竿（稀疏化）
-    if seed % 5 < 2 then return end
 
     nvgSave(vg)
     nvgLineCap(vg, NVG_ROUND)
 
-    -- 只画 1 根竹竿
-    local xOff = ((seed * 7) % 10 - 5) * ppu * 0.03
-    local wind = math.sin(t * 0.8 + seed * 0.5) * ppu * 0.025
-    local bx = sx + xOff + wind
-    local by1 = sy + ppu * 0.65   -- 超出格子下边
-    local by2 = sy - ppu * 0.65   -- 超出格子上边
+    local stalkCount = 2 + seed % 2
+    local inkS = InkPalette.inkStrong
+    local inkM = InkPalette.inkMedium
 
-    nvgBeginPath(vg)
-    nvgMoveTo(vg, bx, by1)
-    nvgLineTo(vg, bx + wind * 0.5, by2)
-    nvgStrokeWidth(vg, 1.8 + (seed % 3) * 0.4)
-    nvgStrokeColor(vg, nvgRGBAf(
-        InkPalette.inkStrong.r, InkPalette.inkStrong.g, InkPalette.inkStrong.b,
-        0.35 * alphaScale))
-    nvgStroke(vg)
+    for si = 1, stalkCount do
+        local hash = (seed * 13 + si * 37) % 100
+        local xOff = ((hash % 20) - 10) * ppu * 0.04
+        local wind = math.sin(t * 0.8 + seed * 0.5 + si * 1.1) * ppu * 0.03
+        local bx = sx + xOff + wind
+        local by1 = sy + ppu * 0.72
+        local by2 = sy - ppu * 0.72
 
-    -- 竹节：1~2 个
-    local nodeCount = 1 + seed % 2
-    for n = 1, nodeCount do
-        local nodeY = by1 + (by2 - by1) * n / (nodeCount + 1) + (seed % 5 - 2)
         nvgBeginPath(vg)
-        nvgMoveTo(vg, bx - 2.5, nodeY)
-        nvgLineTo(vg, bx + 2.5, nodeY)
-        nvgStrokeWidth(vg, 1.0)
-        nvgStrokeColor(vg, nvgRGBAf(
-            InkPalette.inkMedium.r, InkPalette.inkMedium.g, InkPalette.inkMedium.b,
-            0.25 * alphaScale))
+        nvgMoveTo(vg, bx, by1)
+        nvgLineTo(vg, bx + wind * 0.6, by2)
+        local sw = 2.5 + (hash % 4) * 0.5
+        nvgStrokeWidth(vg, sw)
+        nvgStrokeColor(vg, nvgRGBAf(inkS.r, inkS.g, inkS.b, 0.65 * alphaScale))
         nvgStroke(vg)
+
+        local nodeCount = 2 + hash % 2
+        for n = 1, nodeCount do
+            local nodeY = by1 + (by2 - by1) * n / (nodeCount + 1) + (hash % 5 - 2)
+            local nodeX = bx + wind * 0.3 * n / nodeCount
+            nvgBeginPath(vg)
+            nvgMoveTo(vg, nodeX - sw * 0.9, nodeY)
+            nvgLineTo(vg, nodeX + sw * 0.9, nodeY)
+            nvgStrokeWidth(vg, 1.2)
+            nvgStrokeColor(vg, nvgRGBAf(inkM.r, inkM.g, inkM.b, 0.45 * alphaScale))
+            nvgStroke(vg)
+
+            if hash % 3 ~= 0 then
+                local leafDir = (n % 2 == 0) and 1 or -1
+                local lx = nodeX + leafDir * ppu * 0.12
+                local ly = nodeY - ppu * 0.06
+                local leafWind = math.sin(t * 1.2 + n * 0.7 + seed) * ppu * 0.015
+                nvgBeginPath(vg)
+                nvgMoveTo(vg, nodeX, nodeY)
+                nvgQuadTo(vg,
+                    nodeX + leafDir * ppu * 0.07, nodeY - ppu * 0.10,
+                    lx + leafWind, ly)
+                nvgStrokeWidth(vg, 1.6)
+                nvgStrokeColor(vg, nvgRGBAf(inkS.r, inkS.g, inkS.b, 0.50 * alphaScale))
+                nvgStroke(vg)
+            end
+        end
     end
     nvgRestore(vg)
 end

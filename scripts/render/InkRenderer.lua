@@ -65,19 +65,18 @@ local function angleNoise(angle, t, seed)
          + math.sin(a * 21.0 - t * 1.8 + seed * 0.7) * 0.10
 end
 
---- Layer 3: 迷雾渲染 - 平滑径向渐变 + 有机墨晕泼溅 + 墨尘微粒
+--- Layer 3: 迷雾渲染 - 浓墨泼洒 + 不规则有机边缘
 function InkRenderer.drawFog(vg, logW, logH, playerSX, playerSY, visionPx, t, disasterProgress)
     nvgSave(vg)
 
     local inkD = InkPalette.inkDark
-    local fogAlpha = 0.92
+    local fogAlpha = 0.96
 
     ---------------------------------------------------
-    -- Step 1: 平滑径向渐变（核心遮罩，中心全透明→边缘全黑）
-    -- 不使用多边形/path-winding，避免"山脉轮廓"瑕疵
+    -- Step 1: 核心径向遮罩（收窄过渡带 → 更锐利的明暗交界）
     ---------------------------------------------------
-    local innerR = visionPx * 0.78
-    local outerR = visionPx * 1.30
+    local innerR = visionPx * 0.70
+    local outerR = visionPx * 1.05
 
     nvgBeginPath(vg)
     nvgRect(vg, 0, 0, logW, logH)
@@ -88,54 +87,65 @@ function InkRenderer.drawFog(vg, logW, logH, playerSX, playerSY, visionPx, t, di
     nvgFill(vg)
 
     ---------------------------------------------------
-    -- Step 2: 有机墨晕泼溅（打破完美圆形边界）
-    -- 在边界带上放置大尺寸 inkWash 墨团，模拟墨水洇开效果
+    -- Step 2: 浓墨泼溅墨团（大尺寸、高 alpha、不规则分布）
     ---------------------------------------------------
-    local BLOB_COUNT = Config.QUALITY >= 1 and 10 or 6
+    local BLOB_COUNT = Config.QUALITY >= 1 and 14 or 8
     for i = 1, BLOB_COUNT do
         local baseAngle = (i / BLOB_COUNT) * math.pi * 2
         local noise = angleNoise(baseAngle, t, 42)
-        -- 墨团位置在过渡带中（0.9~1.15 倍视野半径）
-        local blobDist = visionPx * (1.0 + noise * 0.15)
+        local blobDist = visionPx * (0.85 + noise * 0.20)
         local bx = playerSX + math.cos(baseAngle) * blobDist
         local by = playerSY + math.sin(baseAngle) * blobDist
-        -- 墨团尺寸（视野的 8%~18%）
-        local blobR = visionPx * (0.10 + math.abs(noise) * 0.08)
-        local blobAlpha = 0.18 + math.abs(noise) * 0.14
-        BrushStrokes.inkWash(vg, bx, by, blobR * 0.12, blobR, inkD, blobAlpha)
+        local blobR = visionPx * (0.15 + math.abs(noise) * 0.12)
+        local blobAlpha = 0.40 + math.abs(noise) * 0.25
+        BrushStrokes.inkWash(vg, bx, by, blobR * 0.10, blobR, inkD, blobAlpha)
     end
 
     ---------------------------------------------------
-    -- Step 3: 散落墨点（中大尺寸，3~12px，在边界带分布）
+    -- Step 2.5: 外围大块泼墨飞溅（期望图中远处的深墨斑点）
     ---------------------------------------------------
-    local SPLAT_COUNT = Config.QUALITY >= 1 and 18 or 10
+    local OUTER_BLOB = Config.QUALITY >= 1 and 8 or 4
+    for i = 1, OUTER_BLOB do
+        local hash = (i * 97 + 31) % 1000
+        local angle = (i / OUTER_BLOB) * math.pi * 2 + (hash % 100) / 100
+        local dist = visionPx * (1.3 + (hash % 300) / 600)
+        local bx = playerSX + math.cos(angle) * dist
+        local by = playerSY + math.sin(angle) * dist
+        if bx > -50 and bx < logW + 50 and by > -50 and by < logH + 50 then
+            local blobR = visionPx * (0.08 + (hash % 80) / 500)
+            BrushStrokes.inkWash(vg, bx, by, blobR * 0.15, blobR, inkD, 0.55)
+        end
+    end
+
+    ---------------------------------------------------
+    -- Step 3: 散落墨点（加大尺寸和 alpha）
+    ---------------------------------------------------
+    local SPLAT_COUNT = Config.QUALITY >= 1 and 22 or 12
     for i = 1, SPLAT_COUNT do
         local hash = (i * 73 + 17) % 1000
         local angle = (i / SPLAT_COUNT) * math.pi * 2 + math.sin(t * 0.25 + i * 1.3) * 0.18
-        -- 分布在 0.72~1.12 倍视野半径范围
-        local dotDist = visionPx * (0.72 + (hash % 400) / 1000)
+        local dotDist = visionPx * (0.65 + (hash % 500) / 1000)
         local dx = playerSX + math.cos(angle) * dotDist
         local dy = playerSY + math.sin(angle) * dotDist
-        -- 大尺寸墨点（3~12px）
-        local dotSize = 3 + (hash % 90) / 10
+        local dotSize = 4 + (hash % 100) / 8
         local pulse = math.sin(t * 0.8 + i * 1.1) * 0.5 + 0.5
-        local dotAlpha = 0.08 + pulse * 0.16
+        local dotAlpha = 0.20 + pulse * 0.25
         BrushStrokes.inkDotStable(vg, dx, dy, dotSize, inkD, dotAlpha, hash)
     end
 
     ---------------------------------------------------
-    -- Step 4: 细墨尘（小尺寸，1~3px，增加纹理感）
+    -- Step 4: 细墨尘微粒
     ---------------------------------------------------
     if Config.QUALITY >= 1 then
-        for i = 1, 12 do
+        for i = 1, 16 do
             local hash = (i * 137 + 53) % 1000
             local angle = (hash / 1000) * math.pi * 2 + math.sin(t * 0.3 + i * 1.7) * 0.2
-            local dustR = visionPx * (0.82 + (hash % 300) / 1000)
+            local dustR = visionPx * (0.75 + (hash % 350) / 1000)
             local dx = playerSX + math.cos(angle) * dustR
             local dy = playerSY + math.sin(angle) * dustR
             local pulse = math.sin(t * 1.2 + i * 0.9) * 0.5 + 0.5
-            local dustAlpha = 0.06 + pulse * 0.10
-            local dustSize = 1.0 + (hash % 20) / 10
+            local dustAlpha = 0.12 + pulse * 0.18
+            local dustSize = 1.5 + (hash % 25) / 10
             nvgBeginPath(vg)
             nvgCircle(vg, dx, dy, dustSize)
             nvgFillColor(vg, nvgRGBAf(inkD.r, inkD.g, inkD.b, dustAlpha))
@@ -147,7 +157,7 @@ function InkRenderer.drawFog(vg, logW, logH, playerSX, playerSY, visionPx, t, di
     -- 灾变瘴气暗角
     ---------------------------------------------------
     if disasterProgress and disasterProgress > 0 then
-        local miasmaAlpha = disasterProgress * 0.4
+        local miasmaAlpha = disasterProgress * 0.5
         local mc = InkPalette.miasmaDark
         local cornerR = logW * 0.6 * (1 - disasterProgress * 0.3)
         for _, corner in ipairs({
@@ -158,7 +168,7 @@ function InkRenderer.drawFog(vg, logW, logH, playerSX, playerSY, visionPx, t, di
                 mc, miasmaAlpha)
         end
         if disasterProgress > 0.5 then
-            local pulse = math.sin(t * 3) * 0.05 + 0.1
+            local pulse = math.sin(t * 3) * 0.05 + 0.12
             nvgBeginPath(vg)
             nvgRect(vg, 0, 0, logW, logH)
             nvgFillColor(vg, nvgRGBAf(mc.r, mc.g, mc.b, pulse * (disasterProgress - 0.5) * 2))
@@ -246,14 +256,14 @@ function InkRenderer.drawEdgeWhitespace(vg, logW, logH)
 end
 
 --- Toast 消息
-function InkRenderer.drawToast(vg, logW, logH, message, alpha)
+function InkRenderer.drawToast(vg, cx, cy, message, alpha, screenW)
     if not message or alpha <= 0 then return end
 
     nvgSave(vg)
-    local tw = math.min(logW * 0.7, 280)
+    local tw = math.min((screenW or 400) * 0.7, 280)
     local th = 36
-    local tx = (logW - tw) * 0.5
-    local ty = logH * 0.3
+    local tx = cx - tw * 0.5
+    local ty = cy - th * 0.5
 
     -- 卷轴底
     local pw = InkPalette.paperWarm
@@ -280,9 +290,9 @@ function InkRenderer.drawToast(vg, logW, logH, message, alpha)
     nvgStroke(vg)
 
     -- 卷轴两端圆柱
-    for _, cx in ipairs({tx + 3, tx + tw - 3}) do
+    for _, ex in ipairs({tx + 3, tx + tw - 3}) do
         nvgBeginPath(vg)
-        nvgCircle(vg, cx, ty + th * 0.5, 3)
+        nvgCircle(vg, ex, cy, 3)
         nvgFillColor(vg, nvgRGBAf(
             InkPalette.inkMedium.r, InkPalette.inkMedium.g, InkPalette.inkMedium.b,
             0.40 * alpha))
@@ -296,50 +306,99 @@ function InkRenderer.drawToast(vg, logW, logH, message, alpha)
     nvgFillColor(vg, nvgRGBAf(
         InkPalette.inkStrong.r, InkPalette.inkStrong.g, InkPalette.inkStrong.b,
         0.85 * alpha))
-    nvgText(vg, logW * 0.5, ty + th * 0.5, message)
+    nvgText(vg, cx, cy, message)
     nvgRestore(vg)
 end
 
 --- 绘制玩家角色（俯视斗笠）
 function InkRenderer.drawPlayer(vg, sx, sy, ppu, facing, t)
-    local r = ppu * 0.35
+    local r = ppu * 0.55
     local ink = InkPalette.inkStrong
+    local cin = InkPalette.cinnabar
 
     nvgSave(vg)
-    -- 阴影
-    BrushStrokes.inkWash(vg, sx, sy + r * 0.3, r * 0.2, r * 0.5,
-        InkPalette.inkWash, 0.20)
 
-    -- 斗笠主体（浓墨实心圆）
+    -- 行走烟尘（3个渐隐墨团在身后）
+    if facing then
+        local backX = -math.cos(-facing)
+        local backY = -math.sin(-facing)
+        for i = 1, 3 do
+            local dist = r * (0.6 + i * 0.35)
+            local dustAlpha = (0.18 - i * 0.04) * (math.sin(t * 3 + i) * 0.3 + 0.7)
+            local dustR = r * (0.15 + i * 0.06)
+            BrushStrokes.inkWash(vg,
+                sx + backX * dist, sy + backY * dist,
+                dustR * 0.3, dustR,
+                InkPalette.inkWash, dustAlpha)
+        end
+    end
+
+    -- 地面投影（椭圆形暗影）
     nvgBeginPath(vg)
-    nvgCircle(vg, sx, sy, r * 0.55)
-    nvgFillColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.65))
+    nvgEllipse(vg, sx, sy + r * 0.35, r * 0.50, r * 0.18)
+    nvgFillColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.25))
     nvgFill(vg)
 
-    -- 描边圆（呼吸脉动）
-    local breathe = 1.0 + math.sin(t * 2) * 0.04
+    -- 斗笠主体（大浓墨圆 + 编织纹路）
     nvgBeginPath(vg)
-    nvgCircle(vg, sx, sy, r * 0.7 * breathe)
-    nvgStrokeWidth(vg, 1.0)
-    nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.50))
+    nvgCircle(vg, sx, sy, r * 0.50)
+    nvgFillColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.75))
+    nvgFill(vg)
+
+    -- 斗笠编织线（2条十字线）
+    nvgBeginPath(vg)
+    nvgMoveTo(vg, sx - r * 0.40, sy)
+    nvgLineTo(vg, sx + r * 0.40, sy)
+    nvgMoveTo(vg, sx, sy - r * 0.40)
+    nvgLineTo(vg, sx, sy + r * 0.40)
+    nvgStrokeWidth(vg, 0.8)
+    nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.30))
     nvgStroke(vg)
 
-    -- 顶部小墨点
+    -- 斗笠帽檐描边（呼吸脉动）
+    local breathe = 1.0 + math.sin(t * 2) * 0.03
     nvgBeginPath(vg)
-    nvgCircle(vg, sx, sy, r * 0.08)
-    nvgFillColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.80))
+    nvgCircle(vg, sx, sy, r * 0.55 * breathe)
+    nvgStrokeWidth(vg, 1.8)
+    nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.60))
+    nvgStroke(vg)
+
+    -- 外层淡墨晕圈
+    nvgBeginPath(vg)
+    nvgCircle(vg, sx, sy, r * 0.70)
+    nvgStrokeWidth(vg, 0.8)
+    nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.25))
+    nvgStroke(vg)
+
+    -- 顶点笠尖（浓墨实点）
+    nvgBeginPath(vg)
+    nvgCircle(vg, sx, sy, r * 0.10)
+    nvgFillColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.90))
     nvgFill(vg)
 
-    -- 方向指示线（朱砂短线）
+    -- 方向指示（朱砂箭头，加粗加长）
     if facing then
-        local dirX = math.cos(-facing) * r * 0.9
-        local dirY = math.sin(-facing) * r * 0.9
+        local dirX = math.cos(-facing)
+        local dirY = math.sin(-facing)
+        local tipX = sx + dirX * r * 0.85
+        local tipY = sy + dirY * r * 0.85
+        local baseX = sx + dirX * r * 0.50
+        local baseY = sy + dirY * r * 0.50
         nvgBeginPath(vg)
-        nvgMoveTo(vg, sx + dirX * 0.6, sy + dirY * 0.6)
-        nvgLineTo(vg, sx + dirX, sy + dirY)
+        nvgMoveTo(vg, baseX, baseY)
+        nvgLineTo(vg, tipX, tipY)
+        nvgStrokeWidth(vg, 2.5)
+        nvgStrokeColor(vg, nvgRGBAf(cin.r, cin.g, cin.b, 0.65))
+        nvgStroke(vg)
+        local perpX = -dirY * r * 0.12
+        local perpY = dirX * r * 0.12
+        nvgBeginPath(vg)
+        nvgMoveTo(vg, tipX, tipY)
+        nvgLineTo(vg, tipX - dirX * r * 0.15 + perpX, tipY - dirY * r * 0.15 + perpY)
+        nvgMoveTo(vg, tipX, tipY)
+        nvgLineTo(vg, tipX - dirX * r * 0.15 - perpX, tipY - dirY * r * 0.15 - perpY)
         nvgStrokeWidth(vg, 2.0)
-        nvgStrokeColor(vg, nvgRGBAf(
-            InkPalette.cinnabar.r, InkPalette.cinnabar.g, InkPalette.cinnabar.b, 0.50))
+        nvgStrokeColor(vg, nvgRGBAf(cin.r, cin.g, cin.b, 0.60))
         nvgStroke(vg)
     end
 
@@ -348,81 +407,126 @@ end
 
 --- 绘制线索
 function InkRenderer.drawClue(vg, clue, sx, sy, ppu, t)
-    local r = ppu * 0.2
+    local r = ppu * 0.35
+    local cin = InkPalette.cinnabar
+
+    -- 所有线索底层加一圈浅朱砂脉冲提示光圈
+    local pulseR = r * (1.2 + math.sin(t * 2.5) * 0.15)
+    BrushStrokes.inkWash(vg, sx, sy, pulseR * 0.3, pulseR, cin, 0.10)
 
     if clue.type == "footprint" then
-        -- 3个递减大小的淡墨爪印
-        for i = 1, 3 do
-            local offset = (i - 1) * r * 0.4
-            local size = r * (1.1 - i * 0.2)
+        -- 4个递减爪印（更大更浓，明确可辨的兽足痕迹）
+        for i = 1, 4 do
+            local offset = (i - 1) * r * 0.45
+            local size = r * (0.65 - i * 0.10)
+            local alpha = 0.70 - i * 0.12
             BrushStrokes.inkDotStable(vg,
-                sx + offset * 0.7, sy - offset * 0.3,
-                size, InkPalette.inkMedium, 0.50 - i * 0.08, i * 13)
+                sx + offset * 0.6, sy - offset * 0.35,
+                size, InkPalette.inkStrong, alpha, i * 13)
         end
+        -- 爪印旁飘一缕妖气弧线
+        nvgSave(vg)
+        nvgLineCap(vg, NVG_ROUND)
+        local drift = math.sin(t * 1.5) * r * 0.15
+        nvgBeginPath(vg)
+        nvgMoveTo(vg, sx - r * 0.2, sy - r * 0.1)
+        nvgQuadTo(vg, sx + drift, sy - r * 0.6, sx + r * 0.5, sy - r * 0.8)
+        nvgStrokeWidth(vg, 1.5)
+        nvgStrokeColor(vg, nvgRGBAf(cin.r, cin.g, cin.b, 0.30))
+        nvgStroke(vg)
+        nvgRestore(vg)
+
     elseif clue.type == "resonance" then
-        -- 3个同心圆描边脉冲
+        -- 3个同心脉冲环（更大、线宽加粗、高alpha石青色）
         for i = 1, 3 do
-            local pulse = math.sin(t * 2 + i * 0.8) * 0.3 + 0.7
-            local cr = r * (0.5 + i * 0.5) * pulse
+            local pulse = math.sin(t * 2.5 + i * 0.8) * 0.25 + 0.75
+            local cr = r * (0.6 + i * 0.55) * pulse
             nvgSave(vg)
             nvgBeginPath(vg)
             nvgCircle(vg, sx, sy, cr)
-            nvgStrokeWidth(vg, 0.8)
+            nvgStrokeWidth(vg, 1.5 - i * 0.2)
             nvgStrokeColor(vg, nvgRGBAf(
                 InkPalette.azure.r, InkPalette.azure.g, InkPalette.azure.b,
-                (0.22 - i * 0.04)))
+                0.45 - i * 0.10))
             nvgStroke(vg)
             nvgRestore(vg)
         end
+        -- 中心高亮石青点
+        BrushStrokes.inkDotStable(vg, sx, sy, 3.5,
+            InkPalette.azure, 0.55, 77)
+
     elseif clue.type == "nest" then
-        -- 皴法纹理堆 + 中心浓墨点
-        BrushStrokes.cunTexture(vg, sx, sy, r * 1.5,
-            InkPalette.inkMedium, 0.25, clue.x * 97 + clue.y * 31, 4)
-        BrushStrokes.inkDotStable(vg, sx, sy, 2.5, InkPalette.inkStrong, 0.70, 42)
+        -- 更大的皴法纹理堆 + 浓墨中心 + 朱砂标记
+        BrushStrokes.cunTexture(vg, sx, sy, r * 2.0,
+            InkPalette.inkStrong, 0.40, (clue.x or 0) * 97 + (clue.y or 0) * 31, 5)
+        BrushStrokes.inkDotStable(vg, sx, sy, 4.0, InkPalette.inkStrong, 0.80, 42)
+        BrushStrokes.inkDotStable(vg, sx + r * 0.15, sy - r * 0.15, 2.0, cin, 0.50, 43)
     end
 end
 
 --- 绘制资源点
 function InkRenderer.drawResource(vg, res, sx, sy, ppu, t, playerDist)
-    local r = ppu * 0.2
+    local r = ppu * 0.35
 
     if res.type == "lingshi" then
-        -- 嶙峋岩块 + 翡翠光晕
-        BrushStrokes.cunTexture(vg, sx, sy, r * 1.2,
-            InkPalette.inkMedium, 0.25, (res.x or 0) * 71, 4)
-        local glowAlpha = 0.08
+        -- 嶙峋岩块（更大皴法区域 + 翡翠光晕强化）
+        BrushStrokes.cunTexture(vg, sx, sy, r * 1.6,
+            InkPalette.inkStrong, 0.45, (res.x or 0) * 71, 5)
+        local glowAlpha = 0.18
         if playerDist and playerDist < 3 then
-            glowAlpha = 0.08 + (3 - playerDist) / 3 * 0.17
+            glowAlpha = 0.18 + (3 - playerDist) / 3 * 0.25
         end
-        BrushStrokes.inkWash(vg, sx, sy - r * 0.3, r * 0.2, r * 0.8,
+        BrushStrokes.inkWash(vg, sx, sy - r * 0.2, r * 0.3, r * 1.0,
             InkPalette.jade, glowAlpha)
+        -- 顶部翡翠亮点
+        local sparkle = math.sin(t * 3) * 0.15 + 0.45
+        BrushStrokes.inkDotStable(vg, sx, sy - r * 0.3, 3, InkPalette.jade, sparkle, 88)
+
     elseif res.type == "tianjing" then
-        -- 菱形墨线 + gold 晕染 + 旋转
+        -- 菱形墨线 + gold 强化晕染 + 旋转
         local rot = t * 0.5
         nvgSave(vg)
+        -- 底部光圈
+        BrushStrokes.inkWash(vg, sx, sy, r * 0.2, r * 0.8, InkPalette.gold, 0.22)
         nvgTranslate(vg, sx, sy)
         nvgRotate(vg, rot)
         nvgBeginPath(vg)
-        nvgMoveTo(vg, 0, -r * 0.6)
-        nvgLineTo(vg, r * 0.4, 0)
-        nvgLineTo(vg, 0, r * 0.6)
-        nvgLineTo(vg, -r * 0.4, 0)
+        nvgMoveTo(vg, 0, -r * 0.8)
+        nvgLineTo(vg, r * 0.5, 0)
+        nvgLineTo(vg, 0, r * 0.8)
+        nvgLineTo(vg, -r * 0.5, 0)
         nvgClosePath(vg)
-        nvgStrokeWidth(vg, 1.0)
+        nvgStrokeWidth(vg, 1.8)
         nvgStrokeColor(vg, nvgRGBAf(
-            InkPalette.inkStrong.r, InkPalette.inkStrong.g, InkPalette.inkStrong.b, 0.50))
+            InkPalette.inkStrong.r, InkPalette.inkStrong.g, InkPalette.inkStrong.b, 0.65))
         nvgStroke(vg)
+        nvgFillColor(vg, nvgRGBAf(InkPalette.gold.r, InkPalette.gold.g, InkPalette.gold.b, 0.15))
+        nvgFill(vg)
         nvgRestore(vg)
-        BrushStrokes.inkWash(vg, sx, sy, r * 0.15, r * 0.5, InkPalette.gold, 0.12)
+
     else
-        -- 追迹灰/镇灵砂/归魂符等 - 散落墨点
+        -- 追迹灰/镇灵砂/归魂符 — 散落墨点（加大加浓 + 淡彩标记）
+        local itemColor = InkPalette.inkMedium
+        local accentColor = InkPalette.cinnabar
+        if res.type == "traceAsh" then
+            accentColor = InkPalette.inkWash
+        elseif res.type == "mirrorSand" then
+            accentColor = InkPalette.azure
+        elseif res.type == "returnCharm" then
+            accentColor = InkPalette.gold
+        end
+        -- 外围光圈
+        BrushStrokes.inkWash(vg, sx, sy, r * 0.2, r * 0.7, accentColor, 0.15)
+        -- 散落墨点群（更大更浓）
         for i = 1, 5 do
             local hash = ((res.x or 0) * 7 + (res.y or 0) * 13 + i * 31) % 100
-            local dx = (hash % 20 - 10) * r * 0.08
-            local dy = ((hash * 7) % 20 - 10) * r * 0.08
+            local dx = (hash % 20 - 10) * r * 0.10
+            local dy = ((hash * 7) % 20 - 10) * r * 0.10
             BrushStrokes.inkDotStable(vg, sx + dx, sy + dy,
-                1.5, InkPalette.inkLight, 0.20, hash)
+                2.5 + (hash % 3), itemColor, 0.45, hash)
         end
+        -- 中心标记点
+        BrushStrokes.inkDotStable(vg, sx, sy, 3.5, accentColor, 0.55, 55)
     end
 end
 

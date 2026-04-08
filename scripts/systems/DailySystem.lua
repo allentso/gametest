@@ -1,5 +1,8 @@
 --- 每日任务 + 签到奖励
+local EventBus = require("systems.EventBus")
+
 local DailySystem = {}
+DailySystem._listening = false
 
 DailySystem.tasks = {
     { id = "explore_2",  desc = "成功撤离2次",  target = 2,  reward = { lingshi = 20 } },
@@ -52,6 +55,30 @@ DailySystem.loginRewards = {
 
 function DailySystem.getLoginDay(totalDays)
     return ((totalDays - 1) % 7) + 1
+end
+
+function DailySystem.listen()
+    if DailySystem._listening then return end
+    DailySystem._listening = true
+
+    EventBus.on("beast_captured", function(contract, quality)
+        DailySystem.increment("capture_5")
+        if quality == "SR" or quality == "SSR" then
+            DailySystem.increment("capture_sr")
+        end
+    end, DailySystem)
+
+    EventBus.on("evacuation_result", function(success)
+        if success then
+            DailySystem.increment("explore_2")
+        end
+    end, DailySystem)
+
+    EventBus.on("resource_changed", function(resType, amount)
+        if resType == "lingshi" and amount and amount > 0 then
+            DailySystem.increment("collect_20", amount)
+        end
+    end, DailySystem)
 end
 
 return DailySystem

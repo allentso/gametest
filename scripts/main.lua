@@ -56,6 +56,10 @@ function Start()
     GameState.init()
     GameState.checkDailyLogin()
 
+    -- 接入每日任务事件监听
+    local DailySystem = require("systems.DailySystem")
+    DailySystem.listen()
+
     -- 进入大厅屏幕
     local LobbyScreen = require("screens.LobbyScreen")
     ScreenManager.switch(LobbyScreen)

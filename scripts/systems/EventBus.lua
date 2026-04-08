@@ -8,6 +8,16 @@ function EventBus.on(event, fn, owner)
 end
 
 function EventBus.off(event, owner)
+    if event == nil then
+        for ev, list in pairs(listeners) do
+            for i = #list, 1, -1 do
+                if list[i].owner == owner then
+                    table.remove(list, i)
+                end
+            end
+        end
+        return
+    end
     if not listeners[event] then return end
     for i = #listeners[event], 1, -1 do
         if listeners[event][i].owner == owner then

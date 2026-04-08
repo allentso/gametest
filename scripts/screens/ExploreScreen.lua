@@ -68,6 +68,9 @@ function ExploreScreen.new(params)
 end
 
 function ExploreScreen:onEnter()
+    -- 重置单局状态
+    SessionState.reset()
+
     -- 初始化地图
     self.map = ExploreMap.new()
     self.map:generate()
@@ -125,6 +128,7 @@ function ExploreScreen:onEnter()
 
     -- 新手引导
     TutorialSystem.start()
+    TutorialSystem.checkTrigger("enter_map")
 end
 
 function ExploreScreen:onExit()
@@ -171,6 +175,7 @@ function ExploreScreen:spawnTrackedBeast(quality)
     beast.aiState = "wander"
     table.insert(self.beasts, beast)
     self:addToast(quality .. "级异兽出现！")
+    TutorialSystem.checkTrigger("beast_spawned")
 end
 
 function ExploreScreen:findOpenPosition(minY, maxY)
@@ -483,6 +488,7 @@ function ExploreScreen:onEvacuationComplete()
 end
 
 function ExploreScreen:onEvacuationResult(success, lostContracts)
+    TutorialSystem.checkTrigger("evacuation_done")
     self:goToResult(lostContracts)
 end
 
@@ -828,29 +834,85 @@ function ExploreScreen:renderBottomBar(vg, logW, logH, t)
         nvgText(vg, stampCX, stampCY + 7, cntLabel)
     end
 
-    -- 第二行：本局道具（墨点色标 + 汉字标签 + 数量）
+    -- 第二行：本局道具（具象化墨绘图标 + 汉字标签 + 数量）
     local row2Y = barY + barH * 0.74
     nvgFontFace(vg, "sans")
     nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_MIDDLE)
 
     local items = {
-        { label = "灰", count = SessionState.getItemCount("traceAsh"), color = P.inkMedium },
-        { label = "砂", count = SessionState.getItemCount("mirrorSand"), color = P.azure },
-        { label = "符", count = SessionState.getItemCount("soulCharm"), color = P.gold },
+        { label = "灰", count = SessionState.getItemCount("traceAsh"), color = P.inkMedium, icon = "ash" },
+        { label = "砂", count = SessionState.getItemCount("mirrorSand"), color = P.azure, icon = "sand" },
+        { label = "符", count = SessionState.getItemCount("soulCharm"), color = P.gold, icon = "charm" },
     }
     local ix = barX + 14
     for idx, item in ipairs(items) do
-        -- 色标：不规则墨点（加大到 5px）
-        BrushStrokes.inkDotStable(vg, ix, row2Y, 5, item.color, 0.65, idx * 29)
+        local icx = ix + 2
+        local icy = row2Y
+        local iconS = 8
+
+        if item.icon == "ash" then
+            -- 追迹灰：3条飘散短弧线（模拟灰烬飘动）
+            nvgSave(vg)
+            nvgLineCap(vg, NVG_ROUND)
+            for li = 1, 3 do
+                local yOff = (li - 2) * iconS * 0.35
+                nvgBeginPath(vg)
+                nvgMoveTo(vg, icx - iconS * 0.5, icy + yOff)
+                nvgQuadTo(vg, icx, icy + yOff - iconS * 0.2, icx + iconS * 0.5, icy + yOff + iconS * 0.1)
+                nvgStrokeWidth(vg, 1.0 + li * 0.3)
+                nvgStrokeColor(vg, nvgRGBAf(item.color.r, item.color.g, item.color.b, 0.65 - li * 0.1))
+                nvgStroke(vg)
+            end
+            nvgRestore(vg)
+        elseif item.icon == "sand" then
+            -- 镇灵砂：散落的小菱形晶体（4颗）
+            nvgSave(vg)
+            for ci = 1, 4 do
+                local hash = (ci * 31 + idx * 7) % 20
+                local dx = (hash - 10) * iconS * 0.06
+                local dy = ((ci - 2.5)) * iconS * 0.28
+                local ds = iconS * 0.22
+                nvgBeginPath(vg)
+                nvgMoveTo(vg, icx + dx, icy + dy - ds)
+                nvgLineTo(vg, icx + dx + ds * 0.7, icy + dy)
+                nvgLineTo(vg, icx + dx, icy + dy + ds)
+                nvgLineTo(vg, icx + dx - ds * 0.7, icy + dy)
+                nvgClosePath(vg)
+                nvgFillColor(vg, nvgRGBAf(item.color.r, item.color.g, item.color.b, 0.55))
+                nvgFill(vg)
+            end
+            nvgRestore(vg)
+        elseif item.icon == "charm" then
+            -- 归魂符：长方形符纸 + 中心符文线
+            nvgSave(vg)
+            local cw = iconS * 0.55
+            local ch = iconS * 0.85
+            nvgBeginPath(vg)
+            nvgRect(vg, icx - cw, icy - ch, cw * 2, ch * 2)
+            nvgFillColor(vg, nvgRGBAf(item.color.r, item.color.g, item.color.b, 0.18))
+            nvgFill(vg)
+            nvgStrokeWidth(vg, 1.0)
+            nvgStrokeColor(vg, nvgRGBAf(item.color.r, item.color.g, item.color.b, 0.55))
+            nvgStroke(vg)
+            -- 符文竖线
+            nvgBeginPath(vg)
+            nvgMoveTo(vg, icx, icy - ch * 0.6)
+            nvgLineTo(vg, icx, icy + ch * 0.6)
+            nvgStrokeWidth(vg, 0.8)
+            nvgStrokeColor(vg, nvgRGBAf(P.cinnabar.r, P.cinnabar.g, P.cinnabar.b, 0.50))
+            nvgStroke(vg)
+            nvgRestore(vg)
+        end
+
         -- 汉字标签
-        nvgFontSize(vg, 11)
-        nvgFillColor(vg, nvgRGBAf(P.inkMedium.r, P.inkMedium.g, P.inkMedium.b, 0.70))
-        nvgText(vg, ix + 8, row2Y, item.label)
-        -- 数量
         nvgFontSize(vg, 12)
-        nvgFillColor(vg, nvgRGBAf(P.inkStrong.r, P.inkStrong.g, P.inkStrong.b, 0.85))
-        nvgText(vg, ix + 22, row2Y, "×" .. item.count)
-        ix = ix + 58
+        nvgFillColor(vg, nvgRGBAf(P.inkMedium.r, P.inkMedium.g, P.inkMedium.b, 0.75))
+        nvgText(vg, ix + 14, row2Y, item.label)
+        -- 数量
+        nvgFontSize(vg, 13)
+        nvgFillColor(vg, nvgRGBAf(P.inkStrong.r, P.inkStrong.g, P.inkStrong.b, 0.90))
+        nvgText(vg, ix + 28, row2Y, "×" .. item.count)
+        ix = ix + 62
     end
 end
 

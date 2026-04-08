@@ -7,14 +7,14 @@ TutorialSystem.step = 0
 TutorialSystem.active = false
 
 local STEPS = {
-    { id = "welcome",     trigger = "enter_map",          message = "欢迎来到灵境" },
-    { id = "collect",     trigger = "lingshi >= 5",       message = "灵石可以合成封灵器" },
-    { id = "investigate", trigger = "clue_collected",     message = "发现了异兽的踪迹！" },
-    { id = "first_beast", trigger = "beast_spawned",      message = "异兽出现了！接近它" },
-    { id = "suppress",    trigger = "suppress_start",     message = "在目标区域点击！" },
-    { id = "captured",    trigger = "beast_captured",     message = "需要撤离才能带走它" },
-    { id = "evacuate",    trigger = "near_evac_point",    message = "前往传送阵等待撤离" },
-    { id = "complete",    trigger = "evacuation_success", message = "异兽已入图鉴" },
+    { id = "welcome",     trigger = "enter_map",      message = "欢迎来到灵境，探索并寻找异兽踪迹" },
+    { id = "collect",     trigger = "collect",         message = "灵石可以合成封灵器" },
+    { id = "investigate", trigger = "investigate",     message = "发现了异兽的踪迹！继续收集线索" },
+    { id = "first_beast", trigger = "beast_spawned",   message = "异兽出现了！从背后接近它" },
+    { id = "suppress",    trigger = "suppress",        message = "在目标区域点击以压制异兽！" },
+    { id = "captured",    trigger = "captured",        message = "捕获成功！需要撤离才能带走它" },
+    { id = "evacuate",    trigger = "evacuate",        message = "前往传送阵，站定等待撤离" },
+    { id = "complete",    trigger = "evacuation_done", message = "异兽已入图鉴，恭喜！" },
 }
 
 function TutorialSystem.start()

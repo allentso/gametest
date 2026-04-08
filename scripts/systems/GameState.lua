@@ -54,7 +54,6 @@ function GameState.init()
     local saved = SaveGuard.load("saves/main.json", Config.DEVICE_ID)
     if saved then
         GameState.data = saved
-        -- 补全新增字段
         for k, v in pairs(DEFAULT_DATA) do
             if GameState.data[k] == nil then
                 if type(v) == "table" then
@@ -69,6 +68,9 @@ function GameState.init()
         GameState.data = deepCopy(DEFAULT_DATA)
         print("[GameState] 新存档已创建")
     end
+
+    local PitySystem = require("systems.PitySystem")
+    PitySystem.load()
 end
 
 --- 保存到磁盘
