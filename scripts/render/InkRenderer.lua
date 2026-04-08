@@ -6,6 +6,64 @@ local Config = require("Config")
 
 local InkRenderer = {}
 
+--------------------------------------------------------------
+-- 贴图图标 (nvgCreateImage 句柄，initImages 中一次性加载)
+--------------------------------------------------------------
+local imgHandles = {}  -- { type_name = nvg_image_handle }
+local imgLoaded = false
+
+--- 图标贴图路径映射
+local IMAGE_PATHS = {
+    -- 资源
+    lingshi    = "image/res_lingshi_20260408061124.png",
+    tianjing   = "image/res_tianjing_20260408061205.png",
+    shouhun    = "image/res_shouhun_20260408061145.png",
+    traceAsh   = "image/res_traceash_20260408061115.png",
+    mirrorSand = "image/res_mirrorsand_20260408061217.png",
+    soulCharm  = "image/res_soulcharm_20260408061106.png",
+    -- 线索
+    footprint  = "image/clue_footprint_20260408061831.png",
+    resonance  = "image/clue_resonance_20260408061922.png",
+    nest       = "image/clue_nest_20260408061952.png",
+    -- 撤离点
+    evac       = "image/evac_point_20260408062028.png",
+}
+
+--- 加载所有贴图（仅调用一次）
+function InkRenderer.initImages(nvg)
+    if imgLoaded then return end
+    for name, path in pairs(IMAGE_PATHS) do
+        local handle = nvgCreateImage(nvg, path, 0)
+        if handle and handle > 0 then
+            imgHandles[name] = handle
+            print("[InkRenderer] Loaded icon: " .. name .. " handle=" .. handle)
+        else
+            print("[InkRenderer] WARN: Failed to load icon: " .. path)
+        end
+    end
+    imgLoaded = true
+end
+
+--- 通用：在 (cx, cy) 处绘制正方形贴图图标
+--- @param vg userdata  NanoVG 上下文
+--- @param handle integer  nvgCreateImage 返回的句柄
+--- @param cx number  中心 x
+--- @param cy number  中心 y
+--- @param size number  图标半径（最终绘制边长 = size*2）
+--- @param alpha number  透明度 0~1
+--- @param angle number  旋转角度（弧度），0 不旋转
+local function drawIcon(vg, handle, cx, cy, size, alpha, angle)
+    if not handle or handle <= 0 then return end
+    local s = size * 2  -- 边长
+    local x = cx - size
+    local y = cy - size
+    local paint = nvgImagePattern(vg, x, y, s, s, angle or 0, handle, alpha or 1.0)
+    nvgBeginPath(vg)
+    nvgRect(vg, x, y, s, s)
+    nvgFillPaint(vg, paint)
+    nvgFill(vg)
+end
+
 --- Layer 1: 宣纸底 + 程序化纤维纹理
 function InkRenderer.drawPaperBase(vg, logW, logH, t)
     -- 全屏宣纸底色
@@ -405,157 +463,82 @@ function InkRenderer.drawPlayer(vg, sx, sy, ppu, facing, t)
     nvgRestore(vg)
 end
 
---- 绘制线索
+--- 绘制线索 —— 贴图图标 + 朱砂脉冲光圈
 function InkRenderer.drawClue(vg, clue, sx, sy, ppu, t)
-    local r = ppu * 0.35
+    local r = ppu * 0.42
     local cin = InkPalette.cinnabar
 
-    -- 所有线索底层加一圈浅朱砂脉冲提示光圈
+    -- 底层朱砂脉冲提示光圈（保留水墨韵味）
     local pulseR = r * (1.2 + math.sin(t * 2.5) * 0.15)
-    BrushStrokes.inkWash(vg, sx, sy, pulseR * 0.3, pulseR, cin, 0.10)
+    BrushStrokes.inkWash(vg, sx, sy, pulseR * 0.3, pulseR, cin, 0.12)
 
-    if clue.type == "footprint" then
-        -- 4个递减爪印（更大更浓，明确可辨的兽足痕迹）
-        for i = 1, 4 do
-            local offset = (i - 1) * r * 0.45
-            local size = r * (0.65 - i * 0.10)
-            local alpha = 0.70 - i * 0.12
-            BrushStrokes.inkDotStable(vg,
-                sx + offset * 0.6, sy - offset * 0.35,
-                size, InkPalette.inkStrong, alpha, i * 13)
-        end
-        -- 爪印旁飘一缕妖气弧线
-        nvgSave(vg)
-        nvgLineCap(vg, NVG_ROUND)
-        local drift = math.sin(t * 1.5) * r * 0.15
-        nvgBeginPath(vg)
-        nvgMoveTo(vg, sx - r * 0.2, sy - r * 0.1)
-        nvgQuadTo(vg, sx + drift, sy - r * 0.6, sx + r * 0.5, sy - r * 0.8)
-        nvgStrokeWidth(vg, 1.5)
-        nvgStrokeColor(vg, nvgRGBAf(cin.r, cin.g, cin.b, 0.30))
-        nvgStroke(vg)
-        nvgRestore(vg)
-
-    elseif clue.type == "resonance" then
-        -- 3个同心脉冲环（更大、线宽加粗、高alpha石青色）
-        for i = 1, 3 do
-            local pulse = math.sin(t * 2.5 + i * 0.8) * 0.25 + 0.75
-            local cr = r * (0.6 + i * 0.55) * pulse
-            nvgSave(vg)
-            nvgBeginPath(vg)
-            nvgCircle(vg, sx, sy, cr)
-            nvgStrokeWidth(vg, 1.5 - i * 0.2)
-            nvgStrokeColor(vg, nvgRGBAf(
-                InkPalette.azure.r, InkPalette.azure.g, InkPalette.azure.b,
-                0.45 - i * 0.10))
-            nvgStroke(vg)
-            nvgRestore(vg)
-        end
-        -- 中心高亮石青点
-        BrushStrokes.inkDotStable(vg, sx, sy, 3.5,
-            InkPalette.azure, 0.55, 77)
-
-    elseif clue.type == "nest" then
-        -- 更大的皴法纹理堆 + 浓墨中心 + 朱砂标记
-        BrushStrokes.cunTexture(vg, sx, sy, r * 2.0,
-            InkPalette.inkStrong, 0.40, (clue.x or 0) * 97 + (clue.y or 0) * 31, 5)
-        BrushStrokes.inkDotStable(vg, sx, sy, 4.0, InkPalette.inkStrong, 0.80, 42)
-        BrushStrokes.inkDotStable(vg, sx + r * 0.15, sy - r * 0.15, 2.0, cin, 0.50, 43)
+    -- 贴图图标
+    local handle = imgHandles[clue.type]
+    if handle then
+        local bobY = math.sin(t * 1.8 + (clue.x or 0) * 2.1) * ppu * 0.025
+        drawIcon(vg, handle, sx, sy + bobY, r, 0.90, 0)
     end
 end
 
---- 绘制资源点
+--- 绘制资源点 —— 贴图图标 + 淡墨光晕底衬
 function InkRenderer.drawResource(vg, res, sx, sy, ppu, t, playerDist)
-    local r = ppu * 0.35
+    local r = ppu * 0.45  -- 图标半径（略大于原矢量）
 
+    -- 底部光晕（保留水墨风味，颜色按类型区分）
+    local glowColor = InkPalette.inkWash
+    local glowAlpha = 0.18
     if res.type == "lingshi" then
-        -- 嶙峋岩块（更大皴法区域 + 翡翠光晕强化）
-        BrushStrokes.cunTexture(vg, sx, sy, r * 1.6,
-            InkPalette.inkStrong, 0.45, (res.x or 0) * 71, 5)
-        local glowAlpha = 0.18
+        glowColor = InkPalette.jade
+        glowAlpha = 0.22
         if playerDist and playerDist < 3 then
-            glowAlpha = 0.18 + (3 - playerDist) / 3 * 0.25
+            glowAlpha = 0.22 + (3 - playerDist) / 3 * 0.20
         end
-        BrushStrokes.inkWash(vg, sx, sy - r * 0.2, r * 0.3, r * 1.0,
-            InkPalette.jade, glowAlpha)
-        -- 顶部翡翠亮点
-        local sparkle = math.sin(t * 3) * 0.15 + 0.45
-        BrushStrokes.inkDotStable(vg, sx, sy - r * 0.3, 3, InkPalette.jade, sparkle, 88)
-
     elseif res.type == "tianjing" then
-        -- 菱形墨线 + gold 强化晕染 + 旋转
-        local rot = t * 0.5
-        nvgSave(vg)
-        -- 底部光圈
-        BrushStrokes.inkWash(vg, sx, sy, r * 0.2, r * 0.8, InkPalette.gold, 0.22)
-        nvgTranslate(vg, sx, sy)
-        nvgRotate(vg, rot)
-        nvgBeginPath(vg)
-        nvgMoveTo(vg, 0, -r * 0.8)
-        nvgLineTo(vg, r * 0.5, 0)
-        nvgLineTo(vg, 0, r * 0.8)
-        nvgLineTo(vg, -r * 0.5, 0)
-        nvgClosePath(vg)
-        nvgStrokeWidth(vg, 1.8)
-        nvgStrokeColor(vg, nvgRGBAf(
-            InkPalette.inkStrong.r, InkPalette.inkStrong.g, InkPalette.inkStrong.b, 0.65))
-        nvgStroke(vg)
-        nvgFillColor(vg, nvgRGBAf(InkPalette.gold.r, InkPalette.gold.g, InkPalette.gold.b, 0.15))
-        nvgFill(vg)
-        nvgRestore(vg)
+        glowColor = InkPalette.gold;  glowAlpha = 0.25
+    elseif res.type == "shouhun" then
+        glowColor = InkPalette.indigo; glowAlpha = 0.22
+    elseif res.type == "traceAsh" then
+        glowColor = InkPalette.inkWash; glowAlpha = 0.16
+    elseif res.type == "mirrorSand" then
+        glowColor = InkPalette.azure; glowAlpha = 0.20
+    elseif res.type == "soulCharm" then
+        glowColor = InkPalette.gold; glowAlpha = 0.20
+    end
 
-    else
-        -- 追迹灰/镇灵砂/归魂符 — 散落墨点（加大加浓 + 淡彩标记）
-        local itemColor = InkPalette.inkMedium
-        local accentColor = InkPalette.cinnabar
-        if res.type == "traceAsh" then
-            accentColor = InkPalette.inkWash
-        elseif res.type == "mirrorSand" then
-            accentColor = InkPalette.azure
-        elseif res.type == "returnCharm" then
-            accentColor = InkPalette.gold
-        end
-        -- 外围光圈
-        BrushStrokes.inkWash(vg, sx, sy, r * 0.2, r * 0.7, accentColor, 0.15)
-        -- 散落墨点群（更大更浓）
-        for i = 1, 5 do
-            local hash = ((res.x or 0) * 7 + (res.y or 0) * 13 + i * 31) % 100
-            local dx = (hash % 20 - 10) * r * 0.10
-            local dy = ((hash * 7) % 20 - 10) * r * 0.10
-            BrushStrokes.inkDotStable(vg, sx + dx, sy + dy,
-                2.5 + (hash % 3), itemColor, 0.45, hash)
-        end
-        -- 中心标记点
-        BrushStrokes.inkDotStable(vg, sx, sy, 3.5, accentColor, 0.55, 55)
+    -- 呼吸脉动光晕
+    local pulse = math.sin(t * 2.0 + (res.x or 0) * 3.7) * 0.04
+    BrushStrokes.inkWash(vg, sx, sy, r * 0.2, r * 1.15, glowColor, glowAlpha + pulse)
+
+    -- 贴图图标
+    local handle = imgHandles[res.type]
+    if handle then
+        -- 轻微浮动动画
+        local bobY = math.sin(t * 1.5 + (res.y or 0) * 2.3) * ppu * 0.03
+        drawIcon(vg, handle, sx, sy + bobY, r, 0.92, 0)
     end
 end
 
---- 绘制撤离点
+--- 绘制撤离点 —— 贴图图标 + 进度弧
 function InkRenderer.drawEvacPoint(vg, sx, sy, ppu, t, progress)
-    local r = ppu * 0.4
+    local r = ppu * 0.48
 
     nvgSave(vg)
-    -- 3层同心jade描边环
-    for i = 1, 3 do
-        local pulse = 1.0 + math.sin(t * 1.5 + i * 0.6) * 0.05
-        local ringR = r * (0.6 + i * 0.25) * pulse
-        nvgBeginPath(vg)
-        nvgCircle(vg, sx, sy, ringR)
-        nvgStrokeWidth(vg, 1.2 - i * 0.2)
-        nvgStrokeColor(vg, nvgRGBAf(
-            InkPalette.jade.r, InkPalette.jade.g, InkPalette.jade.b,
-            0.35 - (i - 1) * 0.08))
-        nvgStroke(vg)
+
+    -- 底部翡翠光晕
+    local pulseAlpha = 0.18 + math.sin(t * 1.5) * 0.05
+    BrushStrokes.inkWash(vg, sx, sy, r * 0.2, r * 1.2, InkPalette.jade, pulseAlpha)
+
+    -- 贴图图标
+    local handle = imgHandles["evac"]
+    if handle then
+        local bobY = math.sin(t * 1.2) * ppu * 0.02
+        drawIcon(vg, handle, sx, sy + bobY, r, 0.92, 0)
     end
 
-    -- 中心gold墨点
-    local dotAlpha = 0.5 + math.sin(t * 2) * 0.2
-    BrushStrokes.inkDotStable(vg, sx, sy, 3, InkPalette.gold, dotAlpha, 99)
-
-    -- 撤离进度弧
+    -- 撤离进度弧（保留矢量绘制，叠加在贴图之上）
     if progress and progress > 0 then
         nvgBeginPath(vg)
-        nvgArc(vg, sx, sy, r * 1.2, -math.pi * 0.5,
+        nvgArc(vg, sx, sy, r * 1.15, -math.pi * 0.5,
             -math.pi * 0.5 + math.pi * 2 * progress, NVG_CW)
         nvgStrokeWidth(vg, 3)
         nvgStrokeColor(vg, nvgRGBAf(

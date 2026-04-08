@@ -7,7 +7,7 @@ DailySystem._listening = false
 DailySystem.tasks = {
     { id = "explore_2",  desc = "成功撤离2次",  target = 2,  reward = { lingshi = 20 } },
     { id = "capture_5",  desc = "捕获5只异兽",  target = 5,  reward = { shouhun = 3 } },
-    { id = "capture_sr", desc = "获得1只异色",   target = 1,  reward = { traceAsh = 5 } },
+    { id = "capture_sr", desc = "捕获1只异色灵兽", target = 1,  reward = { traceAsh = 5 } },
     { id = "collect_20", desc = "收集20个灵石",  target = 20, reward = { soulCharm = 1 } },
 }
 

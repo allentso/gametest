@@ -49,6 +49,10 @@ function Start()
         print("[山海异闻录] Font loaded, id=" .. fontSans)
     end
 
+    -- 加载贴图图标（资源/线索/撤离点）
+    local InkRenderer = require("render.InkRenderer")
+    InkRenderer.initImages(vg)
+
     -- 分辨率初始化
     updateResolution()
 

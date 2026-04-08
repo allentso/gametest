@@ -110,12 +110,20 @@ function GameState.recordBeast(beastId, quality)
             captured = false,
             count = 0,
             bestQuality = "",
+            qualities = { R = 0, SR = 0, SSR = 0 },
         }
     end
     local entry = GameState.data.bestiary[beastId]
     entry.discovered = true
     entry.captured = true
     entry.count = entry.count + 1
+    -- 兼容旧存档：补充 qualities 字段
+    if not entry.qualities then
+        entry.qualities = { R = 0, SR = 0, SSR = 0 }
+    end
+    -- 分品质计数
+    local q = quality or "R"
+    entry.qualities[q] = (entry.qualities[q] or 0) + 1
     -- 更新最佳品质
     local qualRank = { R = 1, SR = 2, SSR = 3 }
     if (qualRank[quality] or 0) > (qualRank[entry.bestQuality] or 0) then

@@ -86,6 +86,11 @@ function CraftScreen:render(vg, logW, logH, t)
     BrushStrokes.inkLine(vg, logW * 0.1, resY + 16, logW * 0.9, resY + 16,
         1.0, InkPalette.inkWash, 0.20 * alpha, 55)
 
+    -- 资源拼音→中文名映射
+    local RES_NAMES = {
+        lingshi = "灵石", shouhun = "兽魂", tianjing = "天晶",
+    }
+
     -- 合成卡片
     self.buttons = {}
     local cardW = logW * 0.85
@@ -132,12 +137,13 @@ function CraftScreen:render(vg, logW, logH, t)
         nvgText(vg, cardX + 12, cy + cardH * 0.50,
             string.format("T%d · 捕获率 %d%%", i + 1, ({85, 92, 98})[i] or 85))
 
-        -- 消耗
+        -- 消耗（中文显示）
         nvgFontSize(vg, 12)
         nvgFillColor(vg, nvgRGBAf(
             InkPalette.inkMedium.r, InkPalette.inkMedium.g, InkPalette.inkMedium.b, 0.60 * alpha))
         local costParts = {}
-        for resName, amount in pairs(recipe.cost) do
+        for resKey, amount in pairs(recipe.cost) do
+            local resName = RES_NAMES[resKey] or resKey
             table.insert(costParts, string.format("%s×%d", resName, amount))
         end
         nvgText(vg, cardX + 12, cy + cardH * 0.75, "消耗: " .. table.concat(costParts, "  "))

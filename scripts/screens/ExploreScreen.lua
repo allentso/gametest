@@ -23,6 +23,12 @@ local InkTileRenderer = require("render.InkTileRenderer")
 local InkRenderer = require("render.InkRenderer")
 local BeastRenderer = require("render.BeastRenderer")
 
+-- 资源拼音→中文名映射
+local RES_NAMES = {
+    lingshi = "灵石", shouhun = "兽魂", tianjing = "天晶",
+    traceAsh = "追迹灰", mirrorSand = "镇灵砂", soulCharm = "归魂符",
+}
+
 local ExploreScreen = {}
 ExploreScreen.__index = ExploreScreen
 
@@ -425,7 +431,7 @@ function ExploreScreen:doInteract()
         else
             SessionState.addItem(res.type, res.amount)
         end
-        self:addToast("获得 " .. res.type .. " ×" .. res.amount)
+        self:addToast("获得 " .. (RES_NAMES[res.type] or res.type) .. " ×" .. res.amount)
         TutorialSystem.checkTrigger("collect")
 
     elseif self.interactType == "evacuate" then
@@ -513,7 +519,10 @@ function ExploreScreen:goToResult(lostContracts)
 end
 
 function ExploreScreen:forceEnd()
-    -- 时间到，所有灵契不稳定
+    -- 灾变超时：灵契全部丢失，灵石保留50%，稀有资源全丢
+    SessionState.resources.lingshi = math.floor((SessionState.resources.lingshi or 0) * 0.5)
+    SessionState.resources.shouhun = 0
+    SessionState.resources.tianjing = 0
     self:goToResult(SessionState.getContracts())
 end
 

@@ -10,15 +10,18 @@ local InkTileRenderer = {}
 -- Pass 1: 色块层 — 大半径低 alpha 底色晕染，让相邻瓦片自然渗透
 ------------------------------------------------------------
 
+--- 小路专用暖土色
+local PATH_COLOR = { r = 0.65, g = 0.55, b = 0.38 }
+
 --- 每种地形的底色配置 { color, innerR, outerR, alpha }
 --- outerR 拉到 1.4~1.6 倍 ppu，确保相邻瓦片充分重叠消除网格感
 local BASE_WASH = {
-    grass  = function(P) return P.jade,     0.05, 1.50, 0.25 end,
-    rock   = function(P) return P.inkMedium, 0.08, 1.40, 0.30 end,
-    water  = function(P) return P.azure,    0.05, 1.55, 0.28 end,
-    path   = function(P) return { r = 0.60, g = 0.50, b = 0.35 }, 0.05, 1.40, 0.18 end,
-    bamboo = function(P) return P.jade,     0.05, 1.45, 0.22 end,
-    danger = function(P) return P.miasmaDark, 0.05, 1.45, 0.28 end,
+    grass  = function(P) return P.jade,       0.05, 1.50, 0.25 end,
+    rock   = function(P) return P.inkMedium,  0.08, 1.40, 0.35 end,  -- 岩石更浓
+    water  = function(P) return P.azure,      0.05, 1.55, 0.35 end,  -- 水面更鲜明
+    path   = function(P) return PATH_COLOR,   0.05, 1.45, 0.28 end,  -- 小路更明显
+    bamboo = function(P) return P.jade,       0.05, 1.45, 0.28 end,  -- 竹林更浓
+    danger = function(P) return P.miasmaDark, 0.05, 1.50, 0.35 end,  -- 瘴气更深
 }
 
 --- Pass 1: 绘制瓦片底色晕染（大半径，重叠产生连续画面）
@@ -34,7 +37,7 @@ function InkTileRenderer.drawBase(vg, tile, sx, sy, ppu, t, fogState)
 
     -- 瘴气区域脉冲
     if tile.type == "danger" then
-        baseAlpha = baseAlpha + math.sin(t * 2.5 + (tile.seed or 0) * 0.3) * 0.05
+        baseAlpha = baseAlpha + math.sin(t * 2.5 + (tile.seed or 0) * 0.3) * 0.08
     end
 
     BrushStrokes.inkWash(vg, sx, sy,
@@ -58,12 +61,18 @@ function InkTileRenderer.drawDetail(vg, tile, sx, sy, ppu, t, fogState)
         InkTileRenderer.drawRockDetail(vg, tile, sx, sy, ppu, t, alphaScale)
     elseif tile.type == "water" then
         InkTileRenderer.drawWaterDetail(vg, tile, sx, sy, ppu, t, alphaScale)
+    elseif tile.type == "path" then
+        InkTileRenderer.drawPathDetail(vg, tile, sx, sy, ppu, t, alphaScale)
     elseif tile.type == "bamboo" then
         InkTileRenderer.drawBambooDetail(vg, tile, sx, sy, ppu, t, alphaScale)
     elseif tile.type == "danger" then
         InkTileRenderer.drawDangerDetail(vg, tile, sx, sy, ppu, t, alphaScale)
     end
-    -- path: 极淡融入宣纸，无额外笔触
+
+    -- 被阻挡的 rock/bamboo 叠加交叉皴纹阻挡标记
+    if tile.blocked and (tile.type == "rock" or tile.type == "bamboo") then
+        InkTileRenderer.drawBlockedOverlay(vg, tile, sx, sy, ppu, alphaScale)
+    end
 
     -- EXPLORED 态叠加淡墨径向晕染
     if fogState == FogOfWar.EXPLORED then
@@ -108,37 +117,130 @@ function InkTileRenderer.drawGrassDetail(vg, tile, sx, sy, ppu, t, alphaScale)
     nvgRestore(vg)
 end
 
---- 岩石细节: 皴法纹理（减少笔画数量，加大区域）
+--- 岩石细节: 皴法纹理 + 浓墨山石轮廓
 function InkTileRenderer.drawRockDetail(vg, tile, sx, sy, ppu, t, alphaScale)
-    local cunCount = math.min(4, tile.cunCount or 4)  -- 最多 4 笔，不再 6-8
-    BrushStrokes.cunTexture(vg, sx, sy, ppu * 0.60,
-        InkPalette.inkStrong, 0.18 * alphaScale, tile.seed or 0, cunCount)
+    local seed = tile.seed or 0
+    local cunCount = math.min(5, tile.cunCount or 4)
+    -- 皴法纹理
+    BrushStrokes.cunTexture(vg, sx, sy, ppu * 0.65,
+        InkPalette.inkStrong, 0.22 * alphaScale, seed, cunCount)
+    -- 添加不规则山石轮廓弧线（强化岩石感）
+    nvgSave(vg)
+    nvgLineCap(vg, NVG_ROUND)
+    local hash = seed * 7 % 100
+    local arcR = ppu * (0.30 + hash / 500)
+    local startA = (hash % 60) * math.pi / 180
+    nvgBeginPath(vg)
+    nvgArc(vg, sx, sy, arcR, startA, startA + math.pi * 0.7, NVG_CW)
+    nvgStrokeWidth(vg, 1.8)
+    nvgStrokeColor(vg, nvgRGBAf(
+        InkPalette.inkStrong.r, InkPalette.inkStrong.g, InkPalette.inkStrong.b,
+        0.28 * alphaScale))
+    nvgStroke(vg)
+    nvgRestore(vg)
 end
 
---- 水面细节: 2条贝塞尔水纹 + 波纹扩展到邻格
+--- 小路细节: 淡色踏痕足迹 + 细碎卵石
+function InkTileRenderer.drawPathDetail(vg, tile, sx, sy, ppu, t, alphaScale)
+    local seed = tile.seed or 0
+    nvgSave(vg)
+    -- 2-3 个淡色椭圆踏痕（模拟脚印压过的泥土）
+    for i = 1, 2 + seed % 2 do
+        local hash = (seed * 11 + i * 23) % 100
+        local dx = (hash % 30 - 15) * ppu * 0.02
+        local dy = ((hash * 3) % 30 - 15) * ppu * 0.02
+        nvgBeginPath(vg)
+        nvgEllipse(vg, sx + dx, sy + dy,
+            ppu * (0.08 + (hash % 10) / 200),
+            ppu * (0.05 + (hash % 8) / 300))
+        nvgFillColor(vg, nvgRGBAf(
+            InkPalette.inkWash.r, InkPalette.inkWash.g, InkPalette.inkWash.b,
+            0.18 * alphaScale))
+        nvgFill(vg)
+    end
+    -- 细碎卵石点（更小的墨点散布在路面上）
+    for i = 1, 3 do
+        local hash = (seed * 7 + i * 41) % 100
+        local dx = (hash % 24 - 12) * ppu * 0.025
+        local dy = ((hash * 5) % 24 - 12) * ppu * 0.025
+        nvgBeginPath(vg)
+        nvgCircle(vg, sx + dx, sy + dy, 1.0 + hash % 2 * 0.5)
+        nvgFillColor(vg, nvgRGBAf(
+            InkPalette.inkLight.r, InkPalette.inkLight.g, InkPalette.inkLight.b,
+            0.20 * alphaScale))
+        nvgFill(vg)
+    end
+    nvgRestore(vg)
+end
+
+--- 被阻挡地形叠加层: 交叉皴纹 + 浓墨晕染（标识不可通行）
+function InkTileRenderer.drawBlockedOverlay(vg, tile, sx, sy, ppu, alphaScale)
+    local seed = tile.seed or 0
+    -- 浓墨底层晕染，让被阻挡格子整体更暗
+    BrushStrokes.inkWash(vg, sx, sy, ppu * 0.05, ppu * 0.50,
+        InkPalette.inkStrong, 0.15 * alphaScale)
+    -- 交叉短线（×标记）表示不可通行
+    nvgSave(vg)
+    nvgLineCap(vg, NVG_ROUND)
+    local r = ppu * 0.22
+    local hash = seed * 13 % 100
+    local offX = (hash % 10 - 5) * ppu * 0.01
+    local offY = ((hash * 3) % 10 - 5) * ppu * 0.01
+    -- 对角线 1
+    nvgBeginPath(vg)
+    nvgMoveTo(vg, sx + offX - r, sy + offY - r * 0.8)
+    nvgLineTo(vg, sx + offX + r, sy + offY + r * 0.8)
+    nvgStrokeWidth(vg, 1.2)
+    nvgStrokeColor(vg, nvgRGBAf(
+        InkPalette.inkMedium.r, InkPalette.inkMedium.g, InkPalette.inkMedium.b,
+        0.25 * alphaScale))
+    nvgStroke(vg)
+    -- 对角线 2
+    nvgBeginPath(vg)
+    nvgMoveTo(vg, sx + offX + r, sy + offY - r * 0.8)
+    nvgLineTo(vg, sx + offX - r, sy + offY + r * 0.8)
+    nvgStrokeWidth(vg, 1.2)
+    nvgStrokeColor(vg, nvgRGBAf(
+        InkPalette.inkMedium.r, InkPalette.inkMedium.g, InkPalette.inkMedium.b,
+        0.25 * alphaScale))
+    nvgStroke(vg)
+    nvgRestore(vg)
+end
+
+--- 水面细节: 3条贝塞尔水纹 + 涟漪环 + 水面光斑
 function InkTileRenderer.drawWaterDetail(vg, tile, sx, sy, ppu, t, alphaScale)
     nvgSave(vg)
     nvgLineCap(vg, NVG_ROUND)
     local c = InkPalette.azure
     local seed = tile.seed or 0
 
-    for i = 1, 2 do
-        local offset = (i - 1.5) * ppu * 0.25
-        local flow = t * 0.4 + seed * 0.1
-        local waveAmp = ppu * 0.08
+    -- 水纹线条（增加到 3 条，更密集）
+    for i = 1, 3 do
+        local offset = (i - 2) * ppu * 0.22
+        local flow = t * 0.5 + seed * 0.1
+        local waveAmp = ppu * 0.10
 
         nvgBeginPath(vg)
-        local startX = sx - ppu * 0.45  -- 超出格子边界
+        local startX = sx - ppu * 0.48
         local startY = sy + offset
         nvgMoveTo(vg, startX, startY)
         nvgBezierTo(vg,
-            sx - ppu * 0.12, startY + math.sin(flow + i) * waveAmp,
-            sx + ppu * 0.12, startY - math.sin(flow + i * 0.7) * waveAmp,
-            sx + ppu * 0.45, startY + math.sin(flow + i * 1.3) * waveAmp * 0.5)
-        nvgStrokeWidth(vg, 0.8 + i * 0.3)
-        nvgStrokeColor(vg, nvgRGBAf(c.r, c.g, c.b, (0.20 - i * 0.03) * alphaScale))
+            sx - ppu * 0.15, startY + math.sin(flow + i) * waveAmp,
+            sx + ppu * 0.15, startY - math.sin(flow + i * 0.7) * waveAmp,
+            sx + ppu * 0.48, startY + math.sin(flow + i * 1.3) * waveAmp * 0.5)
+        nvgStrokeWidth(vg, 1.0 + (3 - i) * 0.3)
+        nvgStrokeColor(vg, nvgRGBAf(c.r, c.g, c.b, (0.30 - i * 0.05) * alphaScale))
         nvgStroke(vg)
     end
+
+    -- 水面光斑（中心一个微亮椭圆，模拟反光）
+    local sparkle = math.sin(t * 2.0 + seed) * 0.08 + 0.12
+    nvgBeginPath(vg)
+    nvgEllipse(vg, sx + ppu * 0.05, sy - ppu * 0.05,
+        ppu * 0.12, ppu * 0.07)
+    nvgFillColor(vg, nvgRGBAf(0.85, 0.90, 0.95, sparkle * alphaScale))
+    nvgFill(vg)
+
     nvgRestore(vg)
 end
 
@@ -199,17 +301,40 @@ function InkTileRenderer.drawBambooDetail(vg, tile, sx, sy, ppu, t, alphaScale)
     nvgRestore(vg)
 end
 
---- 瘴气细节: 朱砂散点 + 暗色微尘
+--- 瘴气细节: 朱砂散点 + 毒雾漩涡 + 警告符号
 function InkTileRenderer.drawDangerDetail(vg, tile, sx, sy, ppu, t, alphaScale)
     local seed = tile.seed or 0
-    -- 2-3个散落朱砂墨点
-    for i = 1, 2 + seed % 2 do
-        local hash = (seed * 3 + i * 17) % 100
-        local dx = (hash % 20 - 10) * ppu * 0.03
-        local dy = ((hash * 7) % 20 - 10) * ppu * 0.03
-        BrushStrokes.inkDotStable(vg, sx + dx, sy + dy,
-            1.5 + hash % 2, InkPalette.cinnabar, 0.14 * alphaScale, hash)
+    local cin = InkPalette.cinnabar
+    local miasma = InkPalette.miasmaLight
+
+    -- 底层暗红漩涡弧线（旋转的瘴气）
+    nvgSave(vg)
+    nvgLineCap(vg, NVG_ROUND)
+    local swirl = t * 0.6 + seed * 0.3
+    for i = 1, 2 do
+        local startA = swirl + (i - 1) * math.pi
+        local arcR = ppu * (0.20 + i * 0.08)
+        nvgBeginPath(vg)
+        nvgArc(vg, sx, sy, arcR, startA, startA + math.pi * 0.8, NVG_CW)
+        nvgStrokeWidth(vg, 1.5)
+        nvgStrokeColor(vg, nvgRGBAf(miasma.r, miasma.g, miasma.b,
+            (0.25 - i * 0.05) * alphaScale))
+        nvgStroke(vg)
     end
+    nvgRestore(vg)
+
+    -- 3-4个散落朱砂墨点（加大加浓）
+    for i = 1, 3 + seed % 2 do
+        local hash = (seed * 3 + i * 17) % 100
+        local dx = (hash % 24 - 12) * ppu * 0.03
+        local dy = ((hash * 7) % 24 - 12) * ppu * 0.03
+        BrushStrokes.inkDotStable(vg, sx + dx, sy + dy,
+            2.0 + hash % 3, cin, 0.22 * alphaScale, hash)
+    end
+
+    -- 中心朱砂警告点（脉冲闪烁）
+    local pulse = math.sin(t * 3.0 + seed) * 0.15 + 0.35
+    BrushStrokes.inkDotStable(vg, sx, sy, 3.0, cin, pulse * alphaScale, seed + 99)
 end
 
 ------------------------------------------------------------
