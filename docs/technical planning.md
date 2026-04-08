@@ -173,7 +173,10 @@ return EventBus
 | `evacuation_result` | ContractQTEOverlay | success, lostContracts | ResultScreen |
 | `suppress_result` | SuppressSystem | "success" / "fail" | CaptureOverlay |
 | `ambush_triggered` | ExploreScreen | beast | 视觉反馈（"袭"字） |
+| `ambush_suppress` | ExploreScreen | — | DailySystem（每日任务计数） |
 | `beast_alerted` | ExploreScreen | beast | BeastRenderer（"!"符号） |
+| `ink_patch_created` | BeastAI(墨鸦flee) | {x, y, duration} | ExploreScreen（创建墨迹区域） |
+| `danger_clue_investigated` | ExploreScreen | — | DailySystem（高危区线索任务） |
 | `resource_changed` | SessionState | resType, amount | HUD |
 | `screen_changed` | ScreenManager | newScreen, oldScreen | InputRouter |
 
@@ -664,294 +667,193 @@ return TrackingSystem
 
 ## 八、异兽 AI 状态机
 
-### 8.1 FSM + 朝向系统
+### 8.1 FSM + 朝向系统 + 个性行为
 
-每只异兽有 `facing` 弧度角，决定视野方向。玩家从背后接触可触发偷袭加成。
+每只异兽有 `facing` 弧度角，决定视野方向。玩家从背后接触可触发偷袭加成。10种异兽各有独特的AI行为模式。
 
-```lua
-local BeastAI = {}
+**状态机扩展**（新增 `gaze`/`petrified`/`burst`/`burst_stop`/`panic`）：
 
-BeastAI.STATE = {
-    IDLE = "idle", WANDER = "wander", ALERT = "alert",
-    FLEE = "flee", HIDDEN = "hidden",
-}
+```
+              ┌─────────┐
+              │  hidden │ （SR/SSR 线索触发前）
+              └────┬────┘
+                   │ 线索数达标
+                   ▼
+┌───────┐     ┌─────────┐     ┌─────────┐
+│ idle  │◄───►│ wander  │────►│  alert  │
+│ 2-5秒 │     │ 随机漫步 │感知  │ 朝向玩家 │
+└───────┘     └─────────┘     └────┬────┘
+     ▲             ▲               │
+     │             │               ▼
+     │        ┌────┴────┐    ┌─────────┐
+     │        │  gaze   │    │  flee   │
+     │        │ 白泽凝视 │    │ 速度3.5 │
+     │        └────┬────┘    └────┬────┘
+     │             │              │
+     │   静止3秒→降低警戒      collapse
+     │             │              ▼
+     │             │         ┌─────────┐
+     └─────────────┘         │  panic  │
+                             │ 随机奔跑 │
+                             └─────────┘
 
-BeastAI.SENSE_RANGE = { R = 3, SR = 4, SSR = 6 }
-
-function BeastAI.update(beast, dt, playerX, playerY, map)
-    local state = beast.aiState
-
-    if state == "idle" then
-        beast.idleTimer = (beast.idleTimer or 0) + dt
-        if beast.idleTimer > beast.idleDuration then
-            beast.aiState = "wander"
-            beast.idleTimer = 0
-            beast.wanderTarget = BeastAI.randomNearby(beast, map, 3)
-        end
-
-    elseif state == "wander" then
-        local arrived = BeastAI.moveToward(beast, beast.wanderTarget, dt, 1.5)
-        if arrived then
-            beast.aiState = "idle"
-            beast.idleDuration = 2 + math.random() * 3
-        end
-        local dist = BeastAI.distTo(beast, playerX, playerY)
-        local senseRange = BeastAI.SENSE_RANGE[beast.quality] or 3
-        if dist < senseRange then
-            local contactAngle = BeastAI.getContactType(beast, playerX, playerY)
-            if contactAngle == "front" then
-                if beast.quality == "SSR" then
-                    beast.aiState = "flee"
-                    beast.facing = math.atan2(beast.y - playerY, beast.x - playerX)
-                else
-                    beast.aiState = "alert"
-                    beast.facing = math.atan2(playerY - beast.y, playerX - beast.x)
-                end
-            elseif contactAngle == "side" and beast.quality == "SSR" then
-                beast.aiState = "alert"
-                beast.facing = math.atan2(playerY - beast.y, playerX - beast.x)
-            end
-        end
-
-    elseif state == "alert" then
-        beast.facing = math.atan2(playerY - beast.y, playerX - beast.x)
-        beast.alertTimer = (beast.alertTimer or 0) + dt
-        local dist = BeastAI.distTo(beast, playerX, playerY)
-        if dist < 2 then
-            beast.aiState = "flee"
-        elseif beast.alertTimer > 5 then
-            beast.aiState = "wander"
-            beast.alertTimer = 0
-        end
-
-    elseif state == "flee" then
-        local angle = math.atan2(beast.y - playerY, beast.x - playerX)
-        beast.facing = angle
-        local speed = 3.5
-        beast.x = beast.x + math.cos(angle) * speed * dt
-        beast.y = beast.y + math.sin(angle) * speed * dt
-        CollisionSystem.tryMove(beast, 0, 0, map)
-        if BeastAI.distTo(beast, playerX, playerY) > 8 then
-            beast.aiState = "alert"
-            beast.alertTimer = 0
-        end
-
-    elseif state == "hidden" then
-        -- 等待追踪系统触发
-    end
-end
-
-function BeastAI.moveToward(beast, target, dt, speed)
-    if not target then return true end
-    local dx = target.x - beast.x
-    local dy = target.y - beast.y
-    local dist = math.sqrt(dx*dx + dy*dy)
-    if dist < 0.1 then return true end
-    beast.facing = math.atan2(dy, dx)
-    local step = math.min(speed * dt, dist)
-    beast.x = beast.x + (dx / dist) * step
-    beast.y = beast.y + (dy / dist) * step
-    return false
-end
-
-function BeastAI.distTo(beast, px, py)
-    local dx = beast.x - px
-    local dy = beast.y - py
-    return math.sqrt(dx*dx + dy*dy)
-end
-
-function BeastAI.randomNearby(beast, map, radius)
-    for attempt = 1, 10 do
-        local tx = beast.x + (math.random() - 0.5) * radius * 2
-        local ty = beast.y + (math.random() - 0.5) * radius * 2
-        if not map:isBlocked(math.floor(tx), math.floor(ty)) then
-            return { x = tx, y = ty }
-        end
-    end
-    return { x = beast.x, y = beast.y }
-end
-
-return BeastAI
+雷翼专属:  alert → burst(速度×2, 3秒) → burst_stop(停止1.5秒, 追击窗口) → wander
+石灵专属:  suppress失败 → petrified(5秒不可再次压制) → idle
 ```
 
-### 8.2 偷袭系统
+**核心 update 签名**:
+
+```lua
+function BeastAI.update(beast, dt, playerX, playerY, map, options)
+-- options = { playerInBamboo, playerInDanger, playerMoving }
+```
+
+**感知范围修正**:
+
+| 条件 | 感知范围变化 |
+|------|------------|
+| 玩家在竹林中 | -2格 |
+| 玩家在瘴气区 | -1格 |
+| 玄狐（001）+玩家在竹林 | 强制缩减至1.5格 |
+| 最低值 | 1格 |
+
+### 8.2 异兽个性行为
+
+每种异兽在标准 FSM 基础上叠加独有行为：
+
+| 异兽 | ID | 个性行为 | 实现方式 |
+|------|-----|---------|---------|
+| **白泽** | 004 | 凝视：感知后不逃跑，走近1格，等待玩家静止3秒→降低警戒（`guardLowered=true`），可正面压制且保留背刺加成；玩家一动即逃 | `gaze` 状态，分 `approach`/`watching` 两阶段 |
+| **风鸣** | 007 | 隐形：`wander`/`idle`状态下 `invisible=true`（透明度0），仅显示草叶扰动粒子；竹林中无法隐形 | `beast.invisible` 标志，ExploreScreen 渲染时判断 |
+| **水蛟** | 006 | 水面加速：附近3格有水面地形时速度+0.8（wander/flee均生效）；水面附近发起压制时QTE指针速度×1.2 | `BeastAI.getWaterBonus()` 遍历附近9格检测水面 |
+| **雷翼** | 003 | 高速冲刺：感知后进入 `burst`（速度×2持续3秒）→`burst_stop`（停止1.5秒=追击窗口）；窗口期压制QTE目标区+20% | `burst`/`burst_stop` 状态，`burstWindow` 标志 |
+| **墨鸦** | 010 | 墨迹喷洒：flee状态每0.5秒生成墨迹（EventBus `ink_patch_created`），墨迹持续20秒，玩家视野穿过墨迹区域降至1格 | EventBus 通知 ExploreScreen 创建 `inkPatches` |
+| **石灵** | 005 | 石化防御：压制失败后进入 `petrified` 5秒，期间不可再次压制 | `BeastAI.enterPetrify()`，`petrifyTimer` 倒计时 |
+| **土偶** | 008 | 不逃跑：感知/alert状态下距离<2也不flee，只转身面对玩家 | alert→flee 逻辑对 `id=="008"` 特殊分支 |
+| **玄狐** | 001 | 竹林压制：竹林中感知范围从3格降至1.5格 | wander 感知检测中特殊判定 |
+
+### 8.3 偷袭系统
 
 ```lua
 function BeastAI.getContactType(beast, playerX, playerY)
-    local toPlayerAngle = math.atan2(playerY - beast.y, playerX - beast.x)
-    local diff = toPlayerAngle - (beast.facing or 0)
-    while diff > math.pi do diff = diff - math.pi * 2 end
-    while diff < -math.pi do diff = diff + math.pi * 2 end
-    local absDiff = math.abs(diff)
-
-    if absDiff > math.pi * 2 / 3 then
-        return "back"     -- 背后 ±60° → 偷袭
-    elseif absDiff > math.pi / 3 then
-        return "side"     -- 侧面
-    else
-        return "front"    -- 正面
-    end
+    -- 返回 "back"(>120°) / "side"(60°-120°) / "front"(<60°)
 end
 ```
 
-**ExploreScreen 调用侧**:
+| 接触类型 | 角度范围 | 封灵成功率 | QTE加成 |
+|---------|---------|----------|---------|
+| 背后偷袭 | 异兽背面 >120° | +20% | 计时类目标区+15%，节奏类次数-2/时限+0.5s |
+| 侧面接触 | 60°~120° | 无 | 无 |
+| 正面接触 | <60° | 无 | 无（R/SR警觉，SSR逃跑） |
+| 白泽降低警戒 | 任意方向 | +20%（等同背刺） | 等同背刺加成 |
+
+### 8.4 捕获被动效果（本局即时生效）
+
+| 异兽 | 被动效果 | 实现位置 |
+|------|---------|---------|
+| 玄狐（001） | 调查线索速度 -0.3秒 | ExploreScreen（待实现调查计时器） |
+| 噬天（002） | 迷雾视野半径 +1格 | ExploreScreen → `hasCapturedBeast("002")` |
+| 石灵（005） | 线索足迹额外显示2格内资源 | ExploreScreen（待实现） |
+| 土偶（008） | 撤离等待时间3秒→1.5秒 | EvacuationSystem `hasTuou` 参数 |
+| 冰蚕（009） | 所有灵契不稳定率 -10% | EvacuationSystem `hasIceSilk` 参数 |
+
+### 8.5 异兽实体数据结构
 
 ```lua
-function ExploreScreen:onBeastContact(beast, playerX, playerY)
-    local contactType = BeastAI.getContactType(beast, playerX, playerY)
-
-    if contactType == "back" then
-        beast.ambushBonus = true
-        EventBus.emit("ambush_triggered", beast)
-    elseif contactType == "front" then
-        if math.random() < 0.50 then
-            beast.aiState = "flee"
-            beast.facing = math.atan2(beast.y - playerY, beast.x - playerX)
-            EventBus.emit("beast_alerted", beast)
-            return
-        end
-    end
-    beast.aiState = "suppress"
-    ScreenManager.push(SuppressOverlay, { beast = beast })
+function BeastAI.createBeast(beastData, x, y, quality)
+    return {
+        id, type, name, element, quality,
+        x, y, halfW, halfH, facing,
+        aiState,       -- idle/wander/alert/flee/hidden/suppress/captured/panic/gaze/petrified/burst/burst_stop
+        idleTimer, idleDuration, alertTimer,
+        wanderTarget,
+        ambushBonus,   -- bool: 是否获得背刺加成
+        guardLowered,  -- bool: 白泽降低警戒后为true
+        burstWindow,   -- bool: 雷翼停止窗口期为true（QTE+20%）
+        invisible,     -- bool: 风鸣隐形时为true
+        baseSpeed, bodySize, senseRange,
+        petrifyTimer,  -- number: 石灵石化防御倒计时
+        inkTimer,      -- number: 墨鸦墨迹生成计时
+    }
 end
 ```
-
-**偷袭效果**:
-
-| 接触类型 | 角度范围 | 捕获率 | 压制窗口 |
-|---------|---------|-------|---------|
-| 背后偷袭 | 异兽背面 ±60° | +20% | +30% |
-| 侧面接触 | ±60°~120° | 无 | 无 |
-| 正面接触 | ±120°~180° | 无（50%逃跑） | 无 |
 
 ---
 
 ## 九、压制系统（QTE）
 
-两种模式: 时机点击（R/SR）和连续封印（SSR）。
+### 9.1 概述
+
+10种异兽各有独立QTE模式。R品质统一使用标准计时模式，SR/SSR品质使用异兽专属QTE。
+
+### 9.2 QTE模式总览
+
+| 模式 | 适用异兽 | 模式常量 | 核心机制 |
+|------|---------|---------|---------|
+| **标准计时** | R品质通用 | `timing` | 指针左右摆动，点击目标区间 |
+| **火焰扰动** | 玄狐（001） | `fire` | 标准计时+目标区间随机跳变0.5秒 |
+| **双指针同步** | 噬天（002） | `dual` | 两条进度条，左右半屏分别操作，需在同步窗口内两条都命中 |
+| **电击抖动** | 雷翼（003） | `lightning` | 标准计时+指针随机位移偏移 |
+| **光晕稳区** | 白泽（004） | `glow` | 标准计时+中央光晕区指针减速至40% |
+| **石化三连** | 石灵（005） | `strong` | 宽目标区(60%)，需3次命中，每次命中后0.5秒石化硬直 |
+| **潮汐节律** | 水蛟（006） | `tidal` | 标准计时+目标区间以正弦波扩张/收缩（周期2秒） |
+| **声波捕捉** | 风鸣（007） | `soundwave` | 声波环从外圈收缩，到达目标圆时点击，需2次命中 |
+| **蓄力释放** | 土偶（008） | `charge` | 长按蓄力，松手时蓄力值在目标区间则命中，过载归零 |
+| **连续节奏** | 冰蚕（009） | `rhythm` | 3秒内8次点击，相邻间隔不超过0.5秒，断链归零 |
+| **翻转陷阱** | 墨鸦（010） | `flip` | 标准计时+目标区随机翻转（安全↔危险），0.3秒预警 |
+
+### 9.3 模式选择逻辑
 
 ```lua
-local SuppressSystem = {}
-
-SuppressSystem.MODE_TIMING = "timing"
-SuppressSystem.MODE_RAPID  = "rapid"
-
-SuppressSystem.state = {
-    mode = "timing",
-    pointer = 0, direction = 1, speed = 1.0,
-    targetZone = { 0.4, 0.6 },
-    hitCount = 0, requiredHits = 1,
-    tapCount = 0, requiredTaps = 8,
-    rapidTimer = 0, rapidDuration = 3.0,
-    active = false,
+-- R品质 → 统一使用 "timing"
+-- SR/SSR品质 → 根据 BEAST_QTE_MAP[beast.id] 选择专属模式
+local BEAST_QTE_MAP = {
+    ["001"] = "fire",  ["002"] = "dual",   ["003"] = "lightning",
+    ["004"] = "glow",  ["005"] = "strong",  ["006"] = "tidal",
+    ["007"] = "soundwave", ["008"] = "charge", ["009"] = "rhythm",
+    ["010"] = "flip",
 }
-
-function SuppressSystem.start(beast, hasMirrorSand)
-    local s = SuppressSystem.state
-    s.hitCount = 0
-    s.tapCount = 0
-    s.active = true
-    s.pointer = 0
-    s.direction = 1
-    s.rapidTimer = 0
-
-    if beast.quality == "SSR" then
-        s.mode = SuppressSystem.MODE_RAPID
-        s.requiredTaps = 8
-        s.rapidDuration = 3.0
-    elseif beast.quality == "SR" then
-        s.mode = SuppressSystem.MODE_TIMING
-        s.speed = 1.6
-        s.requiredHits = 2
-        s.targetZone = { 0.35, 0.65 }
-    else
-        s.mode = SuppressSystem.MODE_TIMING
-        s.speed = 1.0
-        s.requiredHits = 1
-        s.targetZone = { 0.30, 0.70 }
-    end
-
-    if hasMirrorSand then
-        if s.mode == SuppressSystem.MODE_TIMING then
-            s.targetZone[1] = s.targetZone[1] - 0.05
-            s.targetZone[2] = s.targetZone[2] + 0.05
-        else
-            s.requiredTaps = 6
-        end
-    end
-
-    if beast.ambushBonus then
-        if s.mode == SuppressSystem.MODE_TIMING then
-            local expand = (s.targetZone[2] - s.targetZone[1]) * 0.30 * 0.5
-            s.targetZone[1] = math.max(0.05, s.targetZone[1] - expand)
-            s.targetZone[2] = math.min(0.95, s.targetZone[2] + expand)
-        else
-            s.requiredTaps = math.max(4, s.requiredTaps - 2)
-            s.rapidDuration = s.rapidDuration + 0.5
-        end
-    end
-end
-
-function SuppressSystem.update(dt)
-    local s = SuppressSystem.state
-    if not s.active then return end
-
-    if s.mode == SuppressSystem.MODE_TIMING then
-        s.pointer = s.pointer + s.direction * s.speed * dt
-        if s.pointer >= 1.0 then s.pointer = 1.0; s.direction = -1 end
-        if s.pointer <= 0.0 then s.pointer = 0.0; s.direction = 1 end
-    else
-        s.rapidTimer = s.rapidTimer + dt
-        if s.rapidTimer >= s.rapidDuration then
-            s.active = false
-            EventBus.emit("suppress_result", "fail")
-        end
-    end
-end
-
-function SuppressSystem.tap()
-    local s = SuppressSystem.state
-    if not s.active then return nil end
-
-    if s.mode == SuppressSystem.MODE_TIMING then
-        if s.pointer >= s.targetZone[1] and s.pointer <= s.targetZone[2] then
-            s.hitCount = s.hitCount + 1
-            if s.hitCount >= s.requiredHits then
-                s.active = false
-                return "success"
-            end
-            s.speed = s.speed * 1.15
-            s.targetZone[1] = s.targetZone[1] + 0.02
-            s.targetZone[2] = s.targetZone[2] - 0.02
-            return "hit"
-        else
-            s.active = false
-            return "fail"
-        end
-    else
-        s.tapCount = s.tapCount + 1
-        if s.tapCount >= s.requiredTaps then
-            s.active = false
-            return "success"
-        end
-        return "hit"
-    end
-end
-
-function SuppressSystem.getRapidProgress()
-    local s = SuppressSystem.state
-    if s.mode ~= SuppressSystem.MODE_RAPID then return 0 end
-    return s.tapCount / s.requiredTaps
-end
-
-function SuppressSystem.getRapidTimeRatio()
-    local s = SuppressSystem.state
-    if s.mode ~= SuppressSystem.MODE_RAPID then return 1 end
-    return math.max(0, 1 - s.rapidTimer / s.rapidDuration)
-end
-
-return SuppressSystem
 ```
+
+### 9.4 品质难度参数
+
+| 参数 | R | SR | SSR |
+|------|---|-----|-----|
+| 指针速度 | 1.0 | 1.6 | 2.0 |
+| 所需命中次数 | 1 | 2 | 2 |
+| 目标区间 | [0.30, 0.70] | [0.35, 0.65] | [0.38, 0.62] |
+| 每次命中后速度 | ×1.15 | ×1.15 | ×1.15 |
+| 区间缩减 | 两侧各-0.02 | 两侧各-0.02 | 两侧各-0.02 |
+
+### 9.5 道具与状态加成
+
+| 加成来源 | 计时类模式 | 节奏/声波/蓄力类模式 |
+|---------|-----------|-------------------|
+| 镇灵砂 | 目标区两侧各+0.05 | 所需次数-2 或 容错+0.03 |
+| 背刺(ambush) | 目标区扩大15% | 次数-2，时限+0.5s |
+| 雷翼追击窗口(burstWindow) | 目标区扩大20% | 目标区扩大20% |
+| 水蛟水面附近 | 指针速度×1.2（增加难度） | — |
+
+### 9.6 关键API
+
+```lua
+SuppressSystem.start(beast, hasMirrorSand)  -- 初始化QTE，自动选择模式
+SuppressSystem.update(dt)                    -- 帧更新（内部按模式分发）
+SuppressSystem.tap(barIndex)                 -- 点击（dual模式传1或2）
+SuppressSystem.chargeStart()                 -- 蓄力开始（charge模式）
+SuppressSystem.chargeRelease()               -- 蓄力释放（charge模式）
+SuppressSystem.getRapidProgress()            -- rhythm模式进度
+SuppressSystem.getRapidTimeRatio()           -- rhythm模式剩余时间比
+```
+
+### 9.7 SuppressOverlay 输入映射
+
+| 模式 | down | up | 特殊 |
+|------|------|-----|------|
+| 默认（timing/fire/lightning/glow/strong/tidal/flip/soundwave） | `tap()` | 无 | — |
+| charge（土偶） | `chargeStart()` | `chargeRelease()` | 长按蓄力 |
+| dual（噬天） | `tap(1或2)` | 无 | 左半屏=bar1，右半屏=bar2 |
+| rhythm（冰蚕） | `tap()` | 无 | 节奏判定 |
 
 ---
 
@@ -1747,8 +1649,8 @@ scripts/
 │   ├── VirtualJoystick.lua         # 虚拟摇杆
 │   ├── FogOfWar.lua                # 战争迷雾
 │   ├── TrackingSystem.lua          # 追踪系统
-│   ├── BeastAI.lua                 # 异兽 AI（FSM + 朝向）
-│   ├── SuppressSystem.lua          # 压制 QTE
+│   ├── BeastAI.lua                 # 异兽 AI（FSM + 朝向 + 10种个性行为）
+│   ├── SuppressSystem.lua          # 压制 QTE（11种模式：timing/fire/dual/lightning/glow/strong/tidal/soundwave/charge/rhythm/flip）
 │   ├── CaptureSystem.lua           # 捕获判定
 │   ├── PitySystem.lua              # 保底系统
 │   ├── EvacuationSystem.lua        # 撤离 + 灵契 QTE
@@ -1771,7 +1673,7 @@ scripts/
     ├── ResultScreen.lua            # 结算
     ├── CraftScreen.lua             # 合成
     ├── DailyScreen.lua             # 每日任务/登录
-    ├── SuppressOverlay.lua         # 压制 QTE 叠层
+    ├── SuppressOverlay.lua         # 压制 QTE 叠层（10种异兽独立渲染+charge长按/dual双屏输入）
     ├── CaptureOverlay.lua          # 捕获演出叠层
     └── ContractQTEOverlay.lua      # 灵契 QTE 叠层
 ```
