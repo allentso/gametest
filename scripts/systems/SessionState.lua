@@ -16,20 +16,32 @@ function SessionState.reset()
         sealer_t2 = 0,
         sealer_t3 = 0,
         sealer_t4 = 0,
+        sealer_t5 = 0,      -- 混沌印
         traceAsh = 0,       -- 追迹灰
         mirrorSand = 0,     -- 镇灵砂
         soulCharm = 0,      -- 归魂符
+        beastEye = 0,       -- 兽目珠
+        rushWard = 0,       -- 疾风符
+        sealEcho = 0,       -- 封印回响
+        fogMap = 0,         -- 迷雾残图
     }
     SessionState.resources = {
-        lingshi = 0,        -- 灵石
-        shouhun = 0,        -- 兽魂
-        tianjing = 0,       -- 天晶
+        lingshi = 0,
+        shouhun = 0,
+        tianjing = 0,
     }
     SessionState.stats = {
         beastsCaptured = 0,
         cluesInvestigated = 0,
         resourcesCollected = 0,
+        ambushCount = 0,
     }
+    SessionState.capturedPassives = {}
+    SessionState.t4FailUsed = false
+    SessionState.t5Used = false
+    SessionState.sealEchoUsed = false
+    SessionState.selectedBiome = nil
+    SessionState.selectedSchool = nil
 end
 
 function SessionState.addContract(contract)

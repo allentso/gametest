@@ -23,8 +23,7 @@ function FogOfWar.init(mapWidth, mapHeight)
 end
 
 --- 每帧更新：将 VISIBLE→EXPLORED，然后以玩家为中心点亮新视野
-function FogOfWar.update(playerX, playerY)
-    -- 先将所有 VISIBLE 降级为 EXPLORED
+function FogOfWar.update(playerX, playerY, overrideRadius)
     for y = 1, FogOfWar.height do
         for x = 1, FogOfWar.width do
             if FogOfWar.grid[y][x] == FogOfWar.VISIBLE then
@@ -32,8 +31,7 @@ function FogOfWar.update(playerX, playerY)
             end
         end
     end
-    -- 以玩家为中心照亮
-    local r = FogOfWar.VISION_RADIUS
+    local r = overrideRadius or FogOfWar.VISION_RADIUS
     local cx = math.floor(playerX) + 1
     local cy = math.floor(playerY) + 1
     local ri = math.ceil(r)

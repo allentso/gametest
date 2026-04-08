@@ -45,21 +45,57 @@ end
 
 function ResultScreen:calculateScore()
     local score = 0
+    self.highlights = {}
+
     for _, c in ipairs(self.contracts) do
         local qs = ({ R = 100, SR = 300, SSR = 1000 })[c.quality] or 50
         score = score + qs
     end
+
     score = score + (self.resources.lingshi or 0) * 2
     score = score + (self.resources.shouhun or 0) * 10
     score = score + (self.resources.tianjing or 0) * 50
-    -- 时间奖励
+
     local timeBonus = math.max(0, math.floor((480 - self.elapsed) / 60) * 50)
     score = score + timeBonus
+
+    -- 首次收录新品种奖励
+    local newSpecies = 0
+    for _, c in ipairs(self.contracts) do
+        local entry = GameState.data.bestiary[c.beastId]
+        if entry and entry.count == 1 then
+            newSpecies = newSpecies + 1
+            score = score + 200
+        end
+    end
+    if newSpecies > 0 then
+        table.insert(self.highlights, "首次收录 " .. newSpecies .. " 种新灵兽 +" .. (newSpecies * 200))
+    end
+
+    -- 多属性捕获加成
+    local elements = {}
+    for _, c in ipairs(self.contracts) do
+        elements[c.element or ""] = true
+    end
+    local elemCount = 0
+    for _ in pairs(elements) do elemCount = elemCount + 1 end
+    if elemCount >= 4 then
+        score = score + 500
+        table.insert(self.highlights, "全属性捕获 +500")
+    end
+
+    -- 紧急逃脱惩罚
+    if self.emergencyEscape then
+        score = score - 150
+        table.insert(self.highlights, "紧急逃脱 -150")
+    end
+
     -- 丢失扣分
     for _, c in ipairs(self.lostContracts) do
         local penalty = ({ R = 50, SR = 200, SSR = 500 })[c.quality] or 50
         score = score - penalty
     end
+
     self.score = math.max(0, score)
 end
 
@@ -250,6 +286,21 @@ function ResultScreen:renderContent(vg, sx, sy, sw, sh, t)
         curY = curY + 24
     end
 
+    -- 亮点
+    if self.highlights and #self.highlights > 0 then
+        for _, hl in ipairs(self.highlights) do
+            itemIdx = itemIdx + 1
+            if revealIdx >= itemIdx then
+                local hlAlpha = math.min(1, (self.itemRevealIdx - itemIdx + 1))
+                nvgFontSize(vg, 12)
+                nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_TOP)
+                nvgFillColor(vg, nvgRGBAf(P.jade.r, P.jade.g, P.jade.b, hlAlpha * 0.75))
+                nvgText(vg, cx, curY, hl)
+                curY = curY + 20
+            end
+        end
+    end
+
     -- 评分
     itemIdx = itemIdx + 1
     if revealIdx >= itemIdx then
@@ -259,6 +310,28 @@ function ResultScreen:renderContent(vg, sx, sy, sw, sh, t)
         nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_TOP)
         nvgFillColor(vg, nvgRGBAf(P.gold.r, P.gold.g, P.gold.b, alpha * 0.9))
         nvgText(vg, cx, curY, tostring(self.score))
+        curY = curY + 36
+
+        -- 封灵师经验条
+        local expCur, expMax = GameState.getExpProgress()
+        local lvl = GameState.getSealerLevel()
+        local barW = sw * 0.6
+        local barH = 8
+        local barX = cx - barW * 0.5
+        nvgFontSize(vg, 11)
+        nvgFillColor(vg, nvgRGBAf(P.inkMedium.r, P.inkMedium.g, P.inkMedium.b, alpha * 0.6))
+        nvgText(vg, cx, curY, "封灵师 境界" .. lvl)
+        curY = curY + 16
+
+        nvgBeginPath(vg)
+        nvgRoundedRect(vg, barX, curY, barW, barH, 3)
+        nvgFillColor(vg, nvgRGBAf(P.inkWash.r, P.inkWash.g, P.inkWash.b, alpha * 0.3))
+        nvgFill(vg)
+        local fill = (expMax > 0) and math.min(1, expCur / expMax) or 1
+        nvgBeginPath(vg)
+        nvgRoundedRect(vg, barX, curY, barW * fill, barH, 3)
+        nvgFillColor(vg, nvgRGBAf(P.jade.r, P.jade.g, P.jade.b, alpha * 0.7))
+        nvgFill(vg)
     end
 end
 

@@ -151,9 +151,8 @@ end
 
 function ExploreMap:generateCluePositions()
     self.clues = {}
-    local clueTypes = { "footprint", "resonance", "nest" }
-    -- 在搜索区和稀有区分布线索
-    for i = 1, 12 do
+    local clueTypes = { "footprint", "resonance", "nest", "scentMark" }
+    for i = 1, 14 do
         for attempt = 1, 20 do
             local x = math.random(3, self.width - 2)
             local y = math.random(4, self.height - 2)
@@ -182,15 +181,17 @@ end
 function ExploreMap:generateResourceNodes()
     self.resources = {}
     local resourceTypes = {
-        { type = "lingshi",   weight = 60, zone = "all" },
-        { type = "traceAsh",  weight = 20, zone = "all" },
-        { type = "shouhun",   weight = 10, zone = "deep" },
-        { type = "tianjing",  weight = 5,  zone = "danger" },
-        { type = "mirrorSand", weight = 8, zone = "deep" },
-        { type = "soulCharm", weight = 5,  zone = "danger" },
+        { type = "lingshi",    weight = 55, zone = "all" },
+        { type = "traceAsh",   weight = 18, zone = "all" },
+        { type = "shouhun",    weight = 12, zone = "deep" },
+        { type = "tianjing",   weight = 5,  zone = "danger" },
+        { type = "mirrorSand", weight = 7,  zone = "deep" },
+        { type = "soulCharm",  weight = 5,  zone = "danger" },
+        { type = "beastEye",   weight = 4,  zone = "deep" },
+        { type = "sealEcho",   weight = 2,  zone = "danger" },
     }
 
-    for i = 1, 25 do
+    for i = 1, 28 do
         for attempt = 1, 20 do
             local x = math.random(3, self.width - 2)
             local y = math.random(3, self.height - 2)

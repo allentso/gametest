@@ -7,14 +7,16 @@ TutorialSystem.step = 0
 TutorialSystem.active = false
 
 local STEPS = {
-    { id = "welcome",     trigger = "enter_map",      message = "欢迎来到灵境，探索并寻找异兽踪迹" },
-    { id = "collect",     trigger = "collect",         message = "灵石可以合成封灵器" },
-    { id = "investigate", trigger = "investigate",     message = "发现了异兽的踪迹！继续收集线索" },
-    { id = "first_beast", trigger = "beast_spawned",   message = "异兽出现了！从背后接近它" },
-    { id = "suppress",    trigger = "suppress",        message = "在目标区域点击以压制异兽！" },
-    { id = "captured",    trigger = "captured",        message = "捕获成功！需要撤离才能带走它" },
-    { id = "evacuate",    trigger = "evacuate",        message = "前往传送阵，站定等待撤离" },
-    { id = "complete",    trigger = "evacuation_done", message = "异兽已入图鉴，恭喜！" },
+    { id = "lobby",       trigger = "enter_lobby",     message = "欢迎来到灵境，选择你的封印流派，然后踏入灵境" },
+    { id = "prepare",     trigger = "enter_prepare",   message = "选择一个灵境——翠谷适合初学者" },
+    { id = "welcome",     trigger = "enter_map",       message = "这是封印师的眼，迷雾中只有你见过的地方才会留存" },
+    { id = "collect",     trigger = "collect",          message = "灵石可以合成封灵器，深入才有更珍贵的材料" },
+    { id = "bamboo",      trigger = "enter_bamboo",     message = "竹林能遮掩你的身影，接近异兽时善用地形" },
+    { id = "investigate", trigger = "investigate",      message = "发现了异兽的踪迹！继续收集线索，它就会出现" },
+    { id = "first_beast", trigger = "beast_spawned",    message = "异兽出现了！从背后接近，背刺有加成" },
+    { id = "suppress",    trigger = "suppress",         message = "看清楚目标区域，在指针进入时点击！" },
+    { id = "captured",    trigger = "captured",         message = "捕获成功！需要到撤离法阵才能带它离开" },
+    { id = "complete",    trigger = "evacuation_done",  message = "异兽已入图鉴，封灵师手记更新。继续探索吧" },
 }
 
 function TutorialSystem.start()

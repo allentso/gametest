@@ -5,9 +5,10 @@ local PitySystem = require("systems.PitySystem")
 local TrackingSystem = {}
 
 TrackingSystem.CLUE_TYPES = {
-    footprint  = { investigate_time = 2.0 },
-    resonance  = { investigate_time = 2.0 },
-    nest       = { investigate_time = 2.0 },
+    footprint  = { investigate_time = 2.0, info = "direction" },
+    resonance  = { investigate_time = 2.0, info = "quality" },
+    nest       = { investigate_time = 2.0, info = "species" },
+    scentMark  = { investigate_time = 2.0, info = "resources" },
 }
 TrackingSystem.FAST_INVESTIGATE_TIME = 0.5
 
@@ -21,6 +22,8 @@ function TrackingSystem.reset()
     TrackingSystem.clues = {}
     TrackingSystem.srTriggered = false
     TrackingSystem.ssrTriggered = false
+    TrackingSystem.extraFlashBonus = 0
+    TrackingSystem.investigatedTypes = {}
 end
 
 function TrackingSystem.getInvestigateTime(clueType, hasTraceAsh)
@@ -35,6 +38,17 @@ function TrackingSystem.investigate(clue, hasTraceAsh)
     if hasTraceAsh then
         EventBus.emit("resource_changed", "traceAsh", -1)
     end
+
+    -- 记录已调查的线索类型
+    TrackingSystem.investigatedTypes[clue.type] = true
+    -- 检查习性推断（3种不同类型线索）
+    local typeCount = 0
+    for _ in pairs(TrackingSystem.investigatedTypes) do typeCount = typeCount + 1 end
+    if typeCount >= 3 and not TrackingSystem.habitDeduced then
+        TrackingSystem.habitDeduced = true
+        EventBus.emit("habit_deduced")
+    end
+
     EventBus.emit("clue_collected", clue.type, TrackingSystem.clueCount)
 
     -- 3线索 → SR
@@ -46,22 +60,31 @@ function TrackingSystem.investigate(clue, hasTraceAsh)
     -- 5线索 → 闪光判定
     if TrackingSystem.clueCount >= 5 and not TrackingSystem.ssrTriggered then
         TrackingSystem.ssrTriggered = true
-        if TrackingSystem.rollFlash(false) then
+        if TrackingSystem.rollFlash(false, false) then
             EventBus.emit("beast_spawn_request", "SSR")
         else
             EventBus.emit("beast_spawn_request", "SR")
         end
     end
+
+    -- 8+线索 → 额外SSR概率（每多1条+3%本局累积）
+    if TrackingSystem.clueCount > 8 then
+        TrackingSystem.extraFlashBonus = (TrackingSystem.clueCount - 8) * 0.03
+    end
 end
 
---- 闪光判定: 基础15% + 每多1线索(超5)+5% + 天命盘+15% + 保底加成
-function TrackingSystem.rollFlash(hasTianmingpan)
+--- 闪光判定: 基础15% + 线索加成 + 封灵器加成 + 保底加成
+function TrackingSystem.rollFlash(hasT4, hasT5)
     local base = 0.15
     local extraClues = math.max(0, TrackingSystem.clueCount - 5)
     local clueBonus = extraClues * 0.05
-    local sealerBonus = hasTianmingpan and 0.15 or 0
+    local sealerBonus = 0
+    if hasT5 then sealerBonus = 0.20
+    elseif hasT4 then sealerBonus = 0.10
+    end
     local pityBonus = PitySystem.getSSRFlashBonus()
-    local totalChance = base + clueBonus + sealerBonus + pityBonus
+    local extraBonus = TrackingSystem.extraFlashBonus or 0
+    local totalChance = base + clueBonus + sealerBonus + pityBonus + extraBonus
     return math.random() < totalChance
 end
 

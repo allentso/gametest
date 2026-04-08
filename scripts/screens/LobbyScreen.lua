@@ -124,7 +124,11 @@ function LobbyScreen:render(vg, logW, logH, t)
     local statY = logH * 0.92
     local bestiaryCount = GameState.getBestiaryCount()
     local totalExplorations = GameState.data.totalExplorations or 0
-    local statText = string.format("图鉴 %d/10 · 探索 %d次", bestiaryCount, totalExplorations)
+    local sealerLevel = GameState.getSealerLevel()
+    local LEVEL_NAMES = { "初入门", "识迹师", "调灵者", "封灵师", "灵契使", "百灵志者", "天命封灵" }
+    local levelName = LEVEL_NAMES[sealerLevel] or "初入门"
+    local statText = string.format("境界%d·%s | 图鉴 %d/10 | 探索 %d次",
+        sealerLevel, levelName, bestiaryCount, totalExplorations)
     nvgFontSize(vg, 12)
     nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
     nvgFillColor(vg, nvgRGBAf(
@@ -179,13 +183,14 @@ function LobbyScreen:drawResources(vg, logW, y, alpha)
         { name = "灵石", value = GameState.getResource("lingshi"), color = InkPalette.jade },
         { name = "兽魂", value = GameState.getResource("shouhun"), color = InkPalette.azure },
         { name = "天晶", value = GameState.getResource("tianjing"), color = InkPalette.gold },
+        { name = "灵印", value = GameState.getResource("lingyin"), color = InkPalette.cinnabar },
     }
 
-    local totalW = #resources * 80
+    local totalW = #resources * 70
     local startX = (logW - totalW) * 0.5
 
     for i, res in ipairs(resources) do
-        local rx = startX + (i - 1) * 80
+        local rx = startX + (i - 1) * 70
 
         -- 色标圆
         nvgBeginPath(vg)

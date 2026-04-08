@@ -10,19 +10,31 @@ local DEFAULT_DATA = {
     lingshi = 0,       -- 灵石
     shouhun = 0,       -- 兽魂
     tianjing = 0,      -- 天晶
+    lingyin = 0,       -- 灵印（荣耀货币）
 
     -- 封灵器库存
     sealer_t2 = 0,     -- 青玉壶
     sealer_t3 = 0,     -- 金缕珠
     sealer_t4 = 0,     -- 天命盘
+    sealer_t5 = 0,     -- 混沌印
+
+    -- 道具库存
+    rushWard = 0,      -- 疾风符
+    fogMap = 0,        -- 迷雾残图
+    sealEcho = 0,      -- 封印回响
 
     -- 图鉴
-    bestiary = {},     -- { [beastId] = { discovered=bool, captured=bool, count=0, bestQuality="" } }
+    bestiary = {},
 
     -- 统计
     totalExplorations = 0,
     totalCaptures = 0,
     totalEvacuations = 0,
+
+    -- 封灵师境界
+    sealerLevel = 1,   -- 当前境界 (1-7)
+    sealerExp = 0,     -- 当前经验值
+    schoolProgress = {},-- 流派进度 { [schoolId] = level }
 
     -- 每日
     loginDays = 0,
@@ -149,6 +161,39 @@ function GameState.getDiscoveredCount()
     return count
 end
 
+--- 境界经验阈值
+local LEVEL_THRESHOLDS = { 0, 500, 1500, 3000, 6000, 12000, 25000 }
+
+--- 添加封灵师经验
+function GameState.addExp(amount)
+    GameState.data.sealerExp = (GameState.data.sealerExp or 0) + amount
+    -- 检查升级
+    local level = GameState.data.sealerLevel or 1
+    while level < 7 do
+        local needed = LEVEL_THRESHOLDS[level + 1]
+        if needed and GameState.data.sealerExp >= needed then
+            level = level + 1
+            GameState.data.sealerLevel = level
+        else
+            break
+        end
+    end
+end
+
+--- 获取当前境界
+function GameState.getSealerLevel()
+    return GameState.data.sealerLevel or 1
+end
+
+--- 获取经验进度 (当前/下一级所需)
+function GameState.getExpProgress()
+    local level = GameState.data.sealerLevel or 1
+    local exp = GameState.data.sealerExp or 0
+    local current = LEVEL_THRESHOLDS[level] or 0
+    local next = LEVEL_THRESHOLDS[level + 1] or current
+    return exp - current, next - current
+end
+
 --- 结算：将本局收益合入全局
 function GameState.settleSession(sessionContracts, sessionResources, lostContracts)
     -- 合入资源
@@ -164,6 +209,20 @@ function GameState.settleSession(sessionContracts, sessionResources, lostContrac
 
     GameState.data.totalExplorations = GameState.data.totalExplorations + 1
     GameState.data.totalEvacuations = GameState.data.totalEvacuations + 1
+
+    -- 结算封灵师经验
+    local exp = 50  -- 完成一局
+    exp = exp + 80  -- 成功撤离
+    for _, contract in ipairs(sessionContracts or {}) do
+        local qExp = ({ R = 20, SR = 60, SSR = 200 })[contract.quality] or 20
+        exp = exp + qExp
+        -- 首次收录新异兽
+        local entry = GameState.data.bestiary[contract.beastId]
+        if entry and entry.count == 1 then
+            exp = exp + 100
+        end
+    end
+    GameState.addExp(exp)
 
     GameState.save()
 end

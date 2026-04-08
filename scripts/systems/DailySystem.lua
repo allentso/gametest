@@ -5,10 +5,12 @@ local DailySystem = {}
 DailySystem._listening = false
 
 DailySystem.tasks = {
-    { id = "explore_2",  desc = "成功撤离2次",  target = 2,  reward = { lingshi = 20 } },
-    { id = "capture_5",  desc = "捕获5只异兽",  target = 5,  reward = { shouhun = 3 } },
-    { id = "capture_sr", desc = "捕获1只异色灵兽", target = 1,  reward = { traceAsh = 5 } },
-    { id = "collect_20", desc = "收集20个灵石",  target = 20, reward = { soulCharm = 1 } },
+    { id = "explore_2",    desc = "成功撤离2次",       target = 2,  reward = { lingshi = 20 } },
+    { id = "capture_5",    desc = "捕获5只异兽",       target = 5,  reward = { shouhun = 3 } },
+    { id = "capture_sr",   desc = "捕获1只SR+异兽",    target = 1,  reward = { traceAsh = 5 } },
+    { id = "collect_20",   desc = "收集20个灵石",      target = 20, reward = { soulCharm = 1 } },
+    { id = "danger_clue",  desc = "在高危区调查3线索",  target = 3,  reward = { tianjing = 1 } },
+    { id = "ambush_3",     desc = "完成3次背刺压制",    target = 3,  reward = { sealEcho = 1 } },
 }
 
 DailySystem.progress = {}
@@ -48,7 +50,7 @@ DailySystem.loginRewards = {
     [2] = { shouhun = 5 },
     [3] = { sealer_t3 = 1 },
     [4] = { lingshi = 20, soulCharm = 2 },
-    [5] = { shouhun = 8 },
+    [5] = { shouhun = 8, sealEcho = 1 },
     [6] = { tianjing = 1 },
     [7] = { sealer_t4 = 1, tianjing = 2 },
 }
@@ -78,6 +80,14 @@ function DailySystem.listen()
         if resType == "lingshi" and amount and amount > 0 then
             DailySystem.increment("collect_20", amount)
         end
+    end, DailySystem)
+
+    EventBus.on("danger_clue_investigated", function()
+        DailySystem.increment("danger_clue")
+    end, DailySystem)
+
+    EventBus.on("ambush_suppress", function()
+        DailySystem.increment("ambush_3")
     end, DailySystem)
 end
 

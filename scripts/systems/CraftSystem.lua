@@ -4,9 +4,13 @@ local EventBus = require("systems.EventBus")
 local CraftSystem = {}
 
 CraftSystem.recipes = {
-    { id = "sealer_t2", name = "青玉壶",  tier = "T2", cost = { lingshi = 3 } },
-    { id = "sealer_t3", name = "金缕珠",  tier = "T3", cost = { lingshi = 5, shouhun = 1 } },
-    { id = "sealer_t4", name = "天命盘",  tier = "T4", cost = { lingshi = 15, shouhun = 5, tianjing = 2 } },
+    { id = "sealer_t2", name = "青玉壶",   tier = "T2", category = "sealer", cost = { lingshi = 3 } },
+    { id = "sealer_t3", name = "金缕珠",   tier = "T3", category = "sealer", cost = { lingshi = 5, shouhun = 1 } },
+    { id = "sealer_t4", name = "天命盘",   tier = "T4", category = "sealer", cost = { lingshi = 15, shouhun = 5, tianjing = 2 } },
+    { id = "sealer_t5", name = "混沌印",   tier = "T5", category = "sealer", cost = { lingshi = 30, shouhun = 12, tianjing = 5, lingyin = 2 } },
+    { id = "rushWard",  name = "疾风符",   tier = nil,  category = "item",   cost = { lingshi = 8, traceAsh = 3 } },
+    { id = "fogMap",    name = "迷雾残图", tier = nil,  category = "item",   cost = { shouhun = 2 } },
+    { id = "sealEcho",  name = "封印回响", tier = nil,  category = "item",   cost = { shouhun = 3, tianjing = 1 } },
 }
 
 function CraftSystem.canCraft(recipeId, inventory)

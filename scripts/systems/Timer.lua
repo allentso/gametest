@@ -8,9 +8,9 @@ Timer.elapsed = 0
 Timer.phase = "calm"
 
 local PHASES = {
-    { name = "calm",     start = 0,   endt = 240 },
-    { name = "warning",  start = 240, endt = 330 },
-    { name = "danger",   start = 330, endt = 420 },
+    { name = "calm",     start = 0,   endt = 180 },
+    { name = "warning",  start = 180, endt = 300 },
+    { name = "danger",   start = 300, endt = 420 },
     { name = "collapse", start = 420, endt = 480 },
 }
 
@@ -62,15 +62,20 @@ end
 function Timer.getCollapseProgress()
     if Timer.phase == "calm" then return 0 end
     if Timer.phase == "warning" then
-        return (Timer.elapsed - 240) / (330 - 240) * 0.3
+        return (Timer.elapsed - 180) / (300 - 180) * 0.3
     end
     if Timer.phase == "danger" then
-        return 0.3 + (Timer.elapsed - 330) / (420 - 330) * 0.4
+        return 0.3 + (Timer.elapsed - 300) / (420 - 300) * 0.4
     end
     if Timer.phase == "collapse" or Timer.phase == "collapsed" then
         return 0.7 + math.min(0.3, (Timer.elapsed - 420) / (480 - 420) * 0.3)
     end
     return 0
+end
+
+--- 获取超时秒数（用于分层惩罚）
+function Timer.getOvertimeSeconds()
+    return math.max(0, Timer.elapsed - Timer.duration)
 end
 
 --- 格式化剩余时间

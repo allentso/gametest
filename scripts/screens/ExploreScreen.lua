@@ -70,6 +70,12 @@ function ExploreScreen.new(params)
     self.shakeTimer = 0
     self.shakeIntensity = 0
 
+    -- 墨鸦墨迹系统
+    self.inkPatches = {}
+
+    -- 玩家静止计时（白泽凝视用）
+    self.playerStillTimer = 0
+
     return self
 end
 
@@ -132,6 +138,13 @@ function ExploreScreen:onEnter()
         self:onEvacuationResult(success, lostContracts)
     end, self)
 
+    EventBus.on("ink_patch_created", function(patch)
+        table.insert(self.inkPatches, {
+            x = patch.x, y = patch.y,
+            life = patch.duration, maxLife = patch.duration,
+        })
+    end, self)
+
     -- 新手引导
     TutorialSystem.start()
     TutorialSystem.checkTrigger("enter_map")
@@ -155,10 +168,12 @@ end
 ------------------------------------------------------------
 
 function ExploreScreen:spawnInitialBeasts()
-    -- 生成 3-5 只 R 级异兽
     local count = 3 + math.random(0, 2)
+    local biome = SessionState.selectedBiome
     for i = 1, count do
-        local beastInfo = BeastData.getRandom()
+        local beastInfo = biome
+            and BeastData.getRandomForBiome(biome)
+            or BeastData.getRandom()
         local x, y = self:findOpenPosition(4, self.map.height - 2)
         if x then
             local beast = BeastAI.createBeast(beastInfo, x, y, "R")
@@ -168,8 +183,10 @@ function ExploreScreen:spawnInitialBeasts()
 end
 
 function ExploreScreen:spawnTrackedBeast(quality)
-    -- 在玩家附近 6-10 格外生成追踪到的异兽
-    local beastInfo = BeastData.getRandom()
+    local biome = SessionState.selectedBiome
+    local beastInfo = biome
+        and BeastData.getRandomForBiome(biome)
+        or BeastData.getRandom()
     local angle = math.random() * math.pi * 2
     local dist = 6 + math.random() * 4
     local tx = self.playerX + math.cos(angle) * dist
@@ -219,16 +236,57 @@ function ExploreScreen:update(dt)
     -- 玩家移动
     self:updatePlayerMovement(dt)
 
-    -- 迷雾更新
-    FogOfWar.update(self.playerX, self.playerY)
+    -- 玩家静止计时（白泽凝视等）
+    if self.playerMoving then
+        self.playerStillTimer = 0
+    else
+        self.playerStillTimer = self.playerStillTimer + dt
+    end
+
+    -- 墨迹更新
+    for i = #self.inkPatches, 1, -1 do
+        self.inkPatches[i].life = self.inkPatches[i].life - dt
+        if self.inkPatches[i].life <= 0 then
+            table.remove(self.inkPatches, i)
+        end
+    end
+
+    -- 迷雾更新（竹林中视野缩减至3格，噬天被动+1格）
+    local visionRadius = Config.VISION_RADIUS
+    if self.playerInBamboo then visionRadius = 3.0 end
+    if self:hasCapturedBeast("002") then visionRadius = visionRadius + 1 end
+    -- 墨鸦墨迹区域降低视野
+    for _, patch in ipairs(self.inkPatches) do
+        local pdx = self.playerX - patch.x
+        local pdy = self.playerY - patch.y
+        if pdx * pdx + pdy * pdy < 4 then
+            visionRadius = math.min(visionRadius, 1.0)
+            break
+        end
+    end
+    FogOfWar.update(self.playerX, self.playerY, visionRadius)
 
     -- 相机跟随
     Camera.follow(self.playerX, self.playerY, dt)
 
-    -- 异兽 AI
+    -- collapse阶段全图异兽进入panic
+    if Timer.phase == "collapse" and not self.panicTriggered then
+        self.panicTriggered = true
+        BeastAI.panicAll(self.beasts)
+    end
+
+    -- 异兽 AI（传递竹林隐蔽状态）
+    local tileX = math.floor(self.playerX)
+    local tileY = math.floor(self.playerY)
+    local curTile = self.map:getTile(tileX, tileY)
+    local aiOptions = {
+        playerInBamboo = self.playerInBamboo,
+        playerInDanger = curTile and curTile.type == "danger",
+        playerMoving = self.playerMoving,
+    }
     for _, beast in ipairs(self.beasts) do
         if beast.aiState ~= "captured" and beast.aiState ~= "suppress" then
-            BeastAI.update(beast, dt, self.playerX, self.playerY, self.map)
+            BeastAI.update(beast, dt, self.playerX, self.playerY, self.map, aiOptions)
         end
     end
 
@@ -260,18 +318,49 @@ function ExploreScreen:updatePlayerMovement(dt)
     local dx, dy = VirtualJoystick.getMoveDirection()
     self.playerMoving = (math.abs(dx) > 0.01 or math.abs(dy) > 0.01)
 
+    -- 检测玩家所在地形
+    local tileX = math.floor(self.playerX)
+    local tileY = math.floor(self.playerY)
+    local currentTile = self.map:getTile(tileX, tileY)
+    local tileType = currentTile and currentTile.type or "grass"
+
+    -- 竹林隐蔽状态（供BeastAI使用）
+    self.playerInBamboo = (tileType == "bamboo")
+
+    -- 瘴气地形每秒消耗1灵石
+    if tileType == "danger" then
+        self.dangerDrainTimer = (self.dangerDrainTimer or 0) + dt
+        if self.dangerDrainTimer >= 1.0 then
+            self.dangerDrainTimer = self.dangerDrainTimer - 1.0
+            local currentLingshi = SessionState.getResource("lingshi")
+            if currentLingshi > 0 then
+                SessionState.addResource("lingshi", -1)
+                self:addToast("瘴气侵蚀 -1灵石")
+            end
+        end
+    else
+        self.dangerDrainTimer = 0
+    end
+
     if self.playerMoving then
         local speed = Config.PLAYER_SPEED
+        -- 小路地形移速+10%
+        if tileType == "path" then
+            speed = speed * 1.1
+        end
+        -- 疾风符加成
+        if self.rushWardTimer and self.rushWardTimer > 0 then
+            speed = speed * 1.3
+        end
+
         local moveX = dx * speed * dt
         local moveY = dy * speed * dt
-        -- CollisionSystem 直接修改传入对象的 x/y，使用 proxy 读回结果
         local proxy = { x = self.playerX, y = self.playerY, halfW = 0.3, halfH = 0.3 }
         CollisionSystem.tryMove(proxy, moveX, moveY, self.map)
         self.playerX = proxy.x
         self.playerY = proxy.y
         self.playerFacing = math.atan2(dy, dx)
 
-        -- 添加行迹
         if math.random() < 0.3 then
             table.insert(self.playerTrails, {
                 x = self.playerX, y = self.playerY,
@@ -280,13 +369,16 @@ function ExploreScreen:updatePlayerMovement(dt)
             })
         end
 
-        -- 撤离中移动则取消
         if EvacuationSystem.evacuating then
             EvacuationSystem.cancel()
         end
     end
 
-    -- 边界限制
+    -- 疾风符倒计时
+    if self.rushWardTimer and self.rushWardTimer > 0 then
+        self.rushWardTimer = self.rushWardTimer - dt
+    end
+
     self.playerX = math.max(1.5, math.min(Config.MAP_WIDTH - 2.5, self.playerX))
     self.playerY = math.max(1.5, math.min(Config.MAP_HEIGHT - 2.5, self.playerY))
 end
@@ -337,11 +429,14 @@ function ExploreScreen:updateInteraction()
     -- 优先级: 异兽压制 > 线索调查 > 资源收集 > 撤离
     -- 1. 检测附近异兽
     for _, beast in ipairs(self.beasts) do
-        if beast.aiState ~= "captured" and beast.aiState ~= "hidden" then
+        if beast.aiState ~= "captured" and beast.aiState ~= "hidden"
+           and beast.aiState ~= "petrified" and beast.aiState ~= "burst" then
             local dist = BeastAI.distTo(beast, self.playerX, self.playerY)
             if dist < 1.5 then
                 local contactType = BeastAI.getContactType(beast, self.playerX, self.playerY)
                 if contactType == "back" then
+                    beast.ambushBonus = true
+                elseif beast.guardLowered then
                     beast.ambushBonus = true
                 end
                 self.interactType = "suppress"
@@ -396,17 +491,25 @@ function ExploreScreen:doInteract()
         local beast = self.interactTarget
         beast.aiState = "suppress"
         self.activeBeast = beast
-        -- 检查偷袭
         local contactType = BeastAI.getContactType(beast, self.playerX, self.playerY)
-        if contactType == "back" then
+        if contactType == "back" or beast.guardLowered then
             beast.ambushBonus = true
+            SessionState.stats.ambushCount = (SessionState.stats.ambushCount or 0) + 1
+            EventBus.emit("ambush_suppress")
         end
         local hasMirrorSand = SessionState.hasItem("mirrorSand")
         if hasMirrorSand then
             SessionState.addItem("mirrorSand", -1)
         end
+        -- 水蛟水面QTE加速标记
+        if beast.id == "006" and BeastAI.isNearWater(beast, self.map) then
+            beast.nearWaterQTE = true
+        end
         SuppressSystem.start(beast, hasMirrorSand)
-        -- 推入 SuppressOverlay
+        -- 水蛟水面附近QTE指针加速×1.2
+        if beast.nearWaterQTE then
+            SuppressSystem.state.speed = SuppressSystem.state.speed * 1.2
+        end
         local SuppressOverlay = require("screens.SuppressOverlay")
         ScreenManager.push(SuppressOverlay, { beast = beast })
         TutorialSystem.checkTrigger("suppress")
@@ -422,6 +525,12 @@ function ExploreScreen:doInteract()
         self:addToast("发现线索！")
         TutorialSystem.checkTrigger("investigate")
 
+        -- 高危区线索每日任务
+        local py = math.floor(self.playerY)
+        if py / Config.MAP_HEIGHT > 0.7 then
+            EventBus.emit("danger_clue_investigated")
+        end
+
     elseif self.interactType == "collect" then
         local res = self.interactTarget
         res.collected = true
@@ -436,7 +545,16 @@ function ExploreScreen:doInteract()
 
     elseif self.interactType == "evacuate" then
         if not EvacuationSystem.evacuating then
-            EvacuationSystem.startEvacuation(self.interactTarget)
+            -- 检查特殊撤离条件
+            local hasTuou = false
+            for _, c in ipairs(SessionState.getContracts()) do
+                if c.beastId == "008" then hasTuou = true; break end
+            end
+            EvacuationSystem.startEvacuation(self.interactTarget, {
+                hasTuou = hasTuou,
+                isCollapse = Timer.phase == "collapse",
+                hasRushWard = self.rushWardTimer and self.rushWardTimer > 0,
+            })
             TutorialSystem.checkTrigger("evacuate")
         end
     end
@@ -445,41 +563,75 @@ end
 function ExploreScreen:onSuppressResult(result)
     if not self.activeBeast then return end
     if result == "success" then
-        -- 压制成功，进入捕获判定
         local beast = self.activeBeast
-        local tier, key = CaptureSystem.selectBestSealer(SessionState.inventory)
-        if tier then
-            local contract = CaptureSystem.attemptCapture(beast, tier, SessionState.inventory, key)
-            if contract then
-                beast.aiState = "captured"
-                -- 推入 CaptureOverlay
-                local CaptureOverlay = require("screens.CaptureOverlay")
-                ScreenManager.push(CaptureOverlay, {
-                    beast = beast,
-                    contract = contract,
-                })
-            end
+        local available = CaptureSystem.getAvailableSealers(SessionState.inventory)
+        if #available > 0 then
+            -- 显示封灵器选择弹窗
+            self.sealerSelectBeast = beast
+            self.sealerSelectList = available
+            self.sealerSelectActive = true
+            self.paused = true
         else
             self:addToast("没有封灵器！")
-            self.activeBeast.aiState = "flee"
+            beast.aiState = "flee"
+            self.activeBeast = nil
         end
     else
-        self:addToast("压制失败！")
-        self.activeBeast.aiState = "flee"
+        -- 压制失败：检查封印回响
+        if SessionState.hasItem("sealEcho") and not SessionState.sealEchoUsed then
+            SessionState.sealEchoUsed = true
+            self:addToast("封印回响！可再次压制")
+        else
+            self:addToast("压制失败！")
+            -- 石灵压制失败→石化防御5秒
+            if self.activeBeast.id == "005" then
+                BeastAI.enterPetrify(self.activeBeast)
+                self:addToast("石灵进入石化防御！")
+            else
+                self.activeBeast.aiState = "flee"
+            end
+            self.activeBeast = nil
+        end
+    end
+end
+
+--- 封灵器选择回调
+function ExploreScreen:onSealerSelected(sealerInfo)
+    self.sealerSelectActive = false
+    self.paused = false
+    local beast = self.sealerSelectBeast
+    if not beast or not sealerInfo then
+        if beast then beast.aiState = "flee" end
+        self.activeBeast = nil
+        return
+    end
+
+    local contract = CaptureSystem.attemptCapture(
+        beast, sealerInfo.tier, SessionState.inventory, sealerInfo.key)
+    if contract then
+        beast.aiState = "captured"
+        local CaptureOverlay = require("screens.CaptureOverlay")
+        ScreenManager.push(CaptureOverlay, {
+            beast = beast,
+            contract = contract,
+        })
     end
     self.activeBeast = nil
 end
 
 function ExploreScreen:onEvacuationComplete()
-    -- 检查灵契稳定性
     local contracts = SessionState.getContracts()
     if #contracts == 0 then
-        -- 无灵契直接结算
         self:goToResult({})
         return
     end
     local soulCharmCount = SessionState.getItemCount("soulCharm")
-    local unstable = EvacuationSystem.checkContractStability(contracts, soulCharmCount)
+    -- 检查冰蚕被动效果
+    local hasIceSilk = false
+    for _, c in ipairs(contracts) do
+        if c.beastId == "009" then hasIceSilk = true; break end
+    end
+    local unstable = EvacuationSystem.checkContractStability(contracts, soulCharmCount, hasIceSilk)
     if soulCharmCount > 0 and #unstable > 0 then
         SessionState.addItem("soulCharm", -1)
     end
@@ -519,11 +671,49 @@ function ExploreScreen:goToResult(lostContracts)
 end
 
 function ExploreScreen:forceEnd()
-    -- 灾变超时：灵契全部丢失，灵石保留50%，稀有资源全丢
-    SessionState.resources.lingshi = math.floor((SessionState.resources.lingshi or 0) * 0.5)
-    SessionState.resources.shouhun = 0
-    SessionState.resources.tianjing = 0
-    self:goToResult(SessionState.getContracts())
+    local overtime = Timer.getOvertimeSeconds()
+    local contracts = SessionState.getContracts()
+    local lostContracts = {}
+
+    if overtime > 60 then
+        -- 超时>60秒：全部灵契丢失，灵石保留20%
+        for _, c in ipairs(contracts) do
+            table.insert(lostContracts, c)
+        end
+        SessionState.resources.lingshi = math.floor((SessionState.resources.lingshi or 0) * 0.2)
+        SessionState.resources.shouhun = 0
+        SessionState.resources.tianjing = 0
+    elseif overtime > 30 then
+        -- 超时30-60秒：SSR/SR灵契丢失，R保留50%，灵石保留40%
+        for _, c in ipairs(contracts) do
+            if c.quality == "SSR" or c.quality == "SR" then
+                table.insert(lostContracts, c)
+            elseif math.random() > 0.5 then
+                table.insert(lostContracts, c)
+            end
+        end
+        SessionState.resources.lingshi = math.floor((SessionState.resources.lingshi or 0) * 0.4)
+        SessionState.resources.shouhun = 0
+        SessionState.resources.tianjing = 0
+    else
+        -- 超时<30秒：仅SSR灵契丢失，灵石保留60%
+        for _, c in ipairs(contracts) do
+            if c.quality == "SSR" then
+                table.insert(lostContracts, c)
+            end
+        end
+        SessionState.resources.lingshi = math.floor((SessionState.resources.lingshi or 0) * 0.6)
+    end
+
+    self:goToResult(lostContracts)
+end
+
+--- 检查本局是否已捕获某种异兽（用于被动效果判定）
+function ExploreScreen:hasCapturedBeast(beastId)
+    for _, c in ipairs(SessionState.getContracts()) do
+        if c.beastId == beastId then return true end
+    end
+    return false
 end
 
 function ExploreScreen:addToast(msg)
@@ -535,10 +725,23 @@ end
 ------------------------------------------------------------
 
 function ExploreScreen:onInput(action, sx, sy)
+    -- 封灵器选择弹窗拦截所有输入
+    if self.sealerSelectActive then
+        if action == "down" then
+            for _, btn in ipairs(self.sealerSelectButtons or {}) do
+                if sx >= btn.x and sx <= btn.x + btn.w
+                   and sy >= btn.y and sy <= btn.y + btn.h then
+                    self:onSealerSelected(btn.info)
+                    return true
+                end
+            end
+        end
+        return true
+    end
+
     if self.paused then return false end
 
     if action == "down" then
-        -- 交互按钮检测（优先于摇杆）
         if self:isInInteractButton(sx, sy) then
             self:doInteract()
             return true
@@ -614,6 +817,11 @@ function ExploreScreen:render(vg, logW, logH, t)
     self:renderBottomBar(vg, logW, logH, t)
     self:renderControls(vg, logW, logH, t)
     self:renderToasts(vg, logW, logH, t)
+
+    -- 封灵器选择弹窗
+    if self.sealerSelectActive then
+        self:renderSealerSelect(vg, logW, logH, t)
+    end
 
     nvgRestore(vg)
 end
@@ -708,12 +916,45 @@ function ExploreScreen:renderEntities(vg, logW, logH, t)
         end
     end
 
+    -- 墨鸦墨迹区域
+    for _, patch in ipairs(self.inkPatches) do
+        if Camera.inView(patch.x, patch.y) then
+            local sx, sy = Camera.toScreen(patch.x, patch.y)
+            local alpha = math.min(0.5, patch.life / patch.maxLife * 0.5)
+            nvgBeginPath(vg)
+            nvgCircle(vg, sx, sy, ppu * 1.2)
+            nvgFillColor(vg, nvgRGBAf(0.05, 0.03, 0.08, alpha))
+            nvgFill(vg)
+        end
+    end
+
     -- 异兽
     for _, beast in ipairs(self.beasts) do
         if beast.aiState ~= "captured" and beast.aiState ~= "hidden" then
             if FogOfWar.isEntityVisible(beast.x, beast.y) and Camera.inView(beast.x, beast.y) then
                 local sx, sy = Camera.toScreen(beast.x, beast.y)
-                BeastRenderer.draw(vg, beast, sx, sy, ppu, t)
+                if beast.invisible then
+                    -- 风鸣隐形：仅显示草叶扰动粒子
+                    for pi = 1, 3 do
+                        local px = sx + math.sin(t * 2 + pi * 2.1) * ppu * 0.4
+                        local py = sy + math.cos(t * 1.5 + pi * 1.7) * ppu * 0.3
+                        local pa = 0.15 + math.sin(t * 3 + pi) * 0.08
+                        nvgBeginPath(vg)
+                        nvgCircle(vg, px, py, 2)
+                        nvgFillColor(vg, nvgRGBAf(0.3, 0.5, 0.2, pa))
+                        nvgFill(vg)
+                    end
+                elseif beast.aiState == "petrified" then
+                    -- 石灵石化：灰色外框
+                    BeastRenderer.draw(vg, beast, sx, sy, ppu, t)
+                    nvgBeginPath(vg)
+                    nvgCircle(vg, sx, sy, ppu * beast.bodySize * 1.2)
+                    nvgStrokeColor(vg, nvgRGBAf(0.5, 0.5, 0.5, 0.5))
+                    nvgStrokeWidth(vg, 2)
+                    nvgStroke(vg)
+                else
+                    BeastRenderer.draw(vg, beast, sx, sy, ppu, t)
+                end
             end
         end
     end
@@ -995,10 +1236,88 @@ function ExploreScreen:renderToasts(vg, logW, logH, t)
     local P = InkPalette
     local baseY = logH * 0.35
     for i, toast in ipairs(self.toasts) do
-        local alpha = math.min(1, toast.life / 0.5) -- 淡出
+        local alpha = math.min(1, toast.life / 0.5)
         local y = baseY + (i - 1) * 30
         InkRenderer.drawToast(vg, logW * 0.5, y, toast.text, alpha, logW)
     end
+end
+
+------------------------------------------------------------
+-- 封灵器选择弹窗
+------------------------------------------------------------
+
+function ExploreScreen:renderSealerSelect(vg, logW, logH, t)
+    local P = InkPalette
+    -- 半透明遮罩
+    nvgBeginPath(vg)
+    nvgRect(vg, 0, 0, logW, logH)
+    nvgFillColor(vg, nvgRGBAf(0, 0, 0, 0.5))
+    nvgFill(vg)
+
+    local list = self.sealerSelectList or {}
+    local panelW = logW * 0.8
+    local itemH = 52
+    local panelH = #list * itemH + 80
+    local panelX = (logW - panelW) * 0.5
+    local panelY = (logH - panelH) * 0.5
+
+    -- 面板底色
+    nvgBeginPath(vg)
+    nvgRoundedRect(vg, panelX, panelY, panelW, panelH, 8)
+    nvgFillColor(vg, nvgRGBAf(P.paper.r, P.paper.g, P.paper.b, 0.95))
+    nvgFill(vg)
+    BrushStrokes.inkRect(vg, panelX, panelY, panelW, panelH, P.inkMedium, 0.4, 99)
+
+    -- 标题
+    nvgFontFace(vg, "sans")
+    nvgFontSize(vg, 18)
+    nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+    nvgFillColor(vg, nvgRGBAf(P.inkStrong.r, P.inkStrong.g, P.inkStrong.b, 0.85))
+    nvgText(vg, logW * 0.5, panelY + 24, "选择封灵器")
+
+    -- 封灵器列表
+    self.sealerSelectButtons = {}
+    local beast = self.sealerSelectBeast
+    local ambush = beast and beast.ambushBonus
+    for i, info in ipairs(list) do
+        local iy = panelY + 48 + (i - 1) * itemH
+        local rate = info.rate
+        if ambush then rate = math.min(1.0, rate + 0.20) end
+
+        -- 行背景
+        nvgBeginPath(vg)
+        nvgRoundedRect(vg, panelX + 10, iy, panelW - 20, itemH - 4, 4)
+        nvgFillColor(vg, nvgRGBAf(P.jade.r, P.jade.g, P.jade.b, 0.06))
+        nvgFill(vg)
+
+        -- 名称 + 品级
+        nvgFontSize(vg, 15)
+        nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_MIDDLE)
+        nvgFillColor(vg, nvgRGBAf(P.inkStrong.r, P.inkStrong.g, P.inkStrong.b, 0.85))
+        nvgText(vg, panelX + 24, iy + itemH * 0.35, info.name)
+
+        nvgFontSize(vg, 11)
+        nvgFillColor(vg, nvgRGBAf(P.jade.r, P.jade.g, P.jade.b, 0.7))
+        nvgText(vg, panelX + 24, iy + itemH * 0.7,
+            string.format("成功率 %d%%  库存 %d", math.floor(rate * 100), info.count))
+
+        -- 选择按钮区域
+        table.insert(self.sealerSelectButtons, {
+            x = panelX + 10, y = iy, w = panelW - 20, h = itemH - 4,
+            info = info,
+        })
+    end
+
+    -- 取消按钮
+    local cancelY = panelY + panelH - 30
+    nvgFontSize(vg, 13)
+    nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+    nvgFillColor(vg, nvgRGBAf(P.cinnabar.r, P.cinnabar.g, P.cinnabar.b, 0.6))
+    nvgText(vg, logW * 0.5, cancelY, "取消（异兽将逃跑）")
+    table.insert(self.sealerSelectButtons, {
+        x = panelX, y = cancelY - 12, w = panelW, h = 24,
+        info = nil,
+    })
 end
 
 return ExploreScreen

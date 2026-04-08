@@ -86,18 +86,18 @@ function CraftScreen:render(vg, logW, logH, t)
     BrushStrokes.inkLine(vg, logW * 0.1, resY + 16, logW * 0.9, resY + 16,
         1.0, InkPalette.inkWash, 0.20 * alpha, 55)
 
-    -- 资源拼音→中文名映射
     local RES_NAMES = {
         lingshi = "灵石", shouhun = "兽魂", tianjing = "天晶",
+        lingyin = "灵印", traceAsh = "追迹灰",
     }
 
     -- 合成卡片
     self.buttons = {}
     local cardW = logW * 0.85
-    local cardH = logH * 0.18
+    local cardH = logH * 0.09
     local cardX = (logW - cardW) * 0.5
     local startY = logH * 0.20
-    local cardGap = 16
+    local cardGap = 6
 
     for i, recipe in ipairs(CraftSystem.recipes) do
         local cy = startY + (i - 1) * (cardH + cardGap)
@@ -130,12 +130,12 @@ function CraftScreen:render(vg, logW, logH, t)
             InkPalette.inkStrong.r, InkPalette.inkStrong.g, InkPalette.inkStrong.b, 0.80 * alpha))
         nvgText(vg, cardX + 12, cy + cardH * 0.25, recipe.name)
 
-        -- 等级
+        -- 类别/等级
         nvgFontSize(vg, 11)
         nvgFillColor(vg, nvgRGBAf(
             InkPalette.jade.r, InkPalette.jade.g, InkPalette.jade.b, 0.60 * alpha))
-        nvgText(vg, cardX + 12, cy + cardH * 0.50,
-            string.format("T%d · 捕获率 %d%%", i + 1, ({85, 92, 98})[i] or 85))
+        local tierText = recipe.tier and (recipe.tier .. " · 封灵器") or "消耗品"
+        nvgText(vg, cardX + 12, cy + cardH * 0.50, tierText)
 
         -- 消耗（中文显示）
         nvgFontSize(vg, 12)
@@ -153,7 +153,7 @@ function CraftScreen:render(vg, logW, logH, t)
         nvgFillColor(vg, nvgRGBAf(
             InkPalette.inkLight.r, InkPalette.inkLight.g, InkPalette.inkLight.b, 0.55 * alpha))
         nvgText(vg, cardX + cardW - 80, cy + cardH * 0.25,
-            string.format("已有: %d", GameState.getResource(recipe.result)))
+            string.format("已有: %d", GameState.getResource(recipe.id)))
 
         -- 合成按钮
         local btnW = 60

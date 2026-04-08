@@ -27,12 +27,37 @@ function EvacuationSystem.getNearestPoint(playerX, playerY)
     return best, bestDist
 end
 
-function EvacuationSystem.startEvacuation(point)
+function EvacuationSystem.startEvacuation(point, options)
+    options = options or {}
     EvacuationSystem.evacuating = true
     EvacuationSystem.evacuateTimer = 0
     EvacuationSystem.currentPoint = point
-    EvacuationSystem.evacuateDuration = point.duration or 3
+    local duration = point.duration or 3
+    -- 土偶灵契效果：1.5秒
+    if options.hasTuou then duration = 1.5 end
+    -- collapse阶段：1.5秒
+    if options.isCollapse then duration = 1.5 end
+    -- 疾风符：2秒
+    if options.hasRushWard then duration = math.min(duration, 2.0) end
+    EvacuationSystem.evacuateDuration = duration
     EventBus.emit("evacuation_start", point.type)
+end
+
+--- 紧急逃脱（collapse阶段，距撤离点>8格时可触发）
+function EvacuationSystem.emergencyEscape(contracts)
+    local lostContracts = {}
+    -- 按品质权重丢失一只灵契：SSR优先
+    if #contracts > 0 then
+        local sorted = {}
+        for _, c in ipairs(contracts) do table.insert(sorted, c) end
+        table.sort(sorted, function(a, b)
+            local rank = { R = 1, SR = 2, SSR = 3 }
+            return (rank[a.quality] or 0) > (rank[b.quality] or 0)
+        end)
+        table.insert(lostContracts, sorted[1])
+    end
+    EventBus.emit("evacuation_result", true, lostContracts)
+    return lostContracts
 end
 
 function EvacuationSystem.update(dt, playerX, playerY)
@@ -66,13 +91,17 @@ function EvacuationSystem.getProgress()
 end
 
 --- 计算灵契不稳定列表
-function EvacuationSystem.checkContractStability(contracts, soulCharmCount)
+function EvacuationSystem.checkContractStability(contracts, soulCharmCount, hasIceSilk)
     local unstable = {}
     for _, contract in ipairs(contracts) do
         local triggerChance = ({ R = 0.05, SR = 0.30, SSR = 0.50 })[contract.quality] or 0.05
         if soulCharmCount > 0 then
             local reduction = ({ R = 0.05, SR = 0.20, SSR = 0.30 })[contract.quality] or 0
             triggerChance = math.max(0, triggerChance - reduction)
+        end
+        -- 冰蚕被动效果：全灵契不稳定率-10%
+        if hasIceSilk then
+            triggerChance = math.max(0, triggerChance - 0.10)
         end
         if math.random() < triggerChance then
             table.insert(unstable, contract)
