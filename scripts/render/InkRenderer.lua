@@ -463,86 +463,386 @@ function InkRenderer.drawPlayer(vg, sx, sy, ppu, facing, t)
     nvgRestore(vg)
 end
 
---- 绘制线索 —— 贴图图标 + 朱砂脉冲光圈
+--- 绘制线索 —— 三种类型各自独立视觉
 function InkRenderer.drawClue(vg, clue, sx, sy, ppu, t)
     local r = ppu * 0.42
     local cin = InkPalette.cinnabar
+    local ink = InkPalette.inkStrong
+    local inkM = InkPalette.inkMedium
 
-    -- 底层朱砂脉冲提示光圈（保留水墨韵味）
+    -- 底层朱砂脉冲光圈
     local pulseR = r * (1.2 + math.sin(t * 2.5) * 0.15)
     BrushStrokes.inkWash(vg, sx, sy, pulseR * 0.3, pulseR, cin, 0.12)
 
-    -- 贴图图标
+    -- 优先使用贴图
     local handle = imgHandles[clue.type]
     if handle then
         local bobY = math.sin(t * 1.8 + (clue.x or 0) * 2.1) * ppu * 0.025
         drawIcon(vg, handle, sx, sy + bobY, r, 0.90, 0)
+        return
     end
+
+    -- 矢量 fallback：三种线索各有独立形态
+    nvgSave(vg)
+    local bobY = math.sin(t * 1.8 + (clue.x or 0) * 2.1) * ppu * 0.025
+    local cy = sy + bobY
+
+    if clue.type == "footprint" then
+        -- 足迹：两个前后排列的爪印（暖褐色）
+        local pawC = { r = 0.45, g = 0.35, b = 0.25 }
+        for step = -1, 1, 2 do
+            local px = sx + step * r * 0.15
+            local py = cy + step * r * 0.30
+            -- 主掌垫
+            nvgBeginPath(vg)
+            nvgEllipse(vg, px, py, r * 0.16, r * 0.12)
+            nvgFillColor(vg, nvgRGBAf(pawC.r, pawC.g, pawC.b, 0.65))
+            nvgFill(vg)
+            -- 三个趾垫
+            for toe = -1, 1 do
+                local tx = px + toe * r * 0.10
+                local ty = py - r * 0.18
+                nvgBeginPath(vg)
+                nvgCircle(vg, tx, ty, r * 0.05)
+                nvgFillColor(vg, nvgRGBAf(pawC.r, pawC.g, pawC.b, 0.55))
+                nvgFill(vg)
+            end
+        end
+        -- 淡淡的妖气弧线
+        nvgBeginPath(vg)
+        nvgArc(vg, sx, cy, r * 0.50, math.pi * 0.2, math.pi * 0.8, NVG_CW)
+        nvgStrokeWidth(vg, 1.2)
+        nvgStrokeColor(vg, nvgRGBAf(cin.r, cin.g, cin.b, 0.25 + math.sin(t * 2) * 0.08))
+        nvgStroke(vg)
+
+    elseif clue.type == "resonance" then
+        -- 共鸣：同心脉冲环 + 中心灵光点（石青色系）
+        local az = InkPalette.azure
+        for ring = 1, 3 do
+            local rr = r * (0.20 + ring * 0.18)
+            local ringPhase = (t * 1.5 + ring * 0.8) % (math.pi * 2)
+            local ringAlpha = math.max(0, 0.35 - ring * 0.08) * (0.6 + math.sin(ringPhase) * 0.4)
+            nvgBeginPath(vg)
+            nvgCircle(vg, sx, cy, rr)
+            nvgStrokeWidth(vg, 1.8 - ring * 0.3)
+            nvgStrokeColor(vg, nvgRGBAf(az.r, az.g, az.b, ringAlpha))
+            nvgStroke(vg)
+        end
+        -- 中心灵光
+        local coreAlpha = 0.50 + math.sin(t * 3) * 0.15
+        nvgBeginPath(vg)
+        nvgCircle(vg, sx, cy, r * 0.12)
+        nvgFillColor(vg, nvgRGBAf(az.r, az.g, az.b, coreAlpha))
+        nvgFill(vg)
+        BrushStrokes.inkWash(vg, sx, cy, r * 0.05, r * 0.25, az, 0.20)
+
+    elseif clue.type == "nest" then
+        -- 巢穴：碗状弧线 + 内部碎屑 + 朱砂标记
+        nvgLineCap(vg, NVG_ROUND)
+        -- 巢碗弧线
+        nvgBeginPath(vg)
+        nvgArc(vg, sx, cy + r * 0.05, r * 0.35, math.pi * 0.15, math.pi * 0.85, NVG_CW)
+        nvgStrokeWidth(vg, 2.5)
+        nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.55))
+        nvgStroke(vg)
+        -- 交织短线（巢的编织感）
+        for i = 1, 4 do
+            local hash = ((clue.x or 0) * 7 + i * 23) % 100
+            local lx = sx + (hash % 20 - 10) * r * 0.02
+            local ly1 = cy + r * 0.10 - (hash % 8) * r * 0.02
+            local ly2 = cy + r * 0.30
+            nvgBeginPath(vg)
+            nvgMoveTo(vg, lx - r * 0.08, ly1)
+            nvgLineTo(vg, lx + r * 0.08, ly2)
+            nvgStrokeWidth(vg, 1.2)
+            nvgStrokeColor(vg, nvgRGBAf(inkM.r, inkM.g, inkM.b, 0.35))
+            nvgStroke(vg)
+        end
+        -- 巢中朱砂标记点
+        BrushStrokes.inkDotStable(vg, sx, cy + r * 0.08, 3.5, cin, 0.45,
+            (clue.x or 0) * 31 + 77)
+    end
+
+    nvgRestore(vg)
 end
 
---- 绘制资源点 —— 贴图图标 + 淡墨光晕底衬
+--- 绘制资源点 —— 六种资源各有独立矢量图标
 function InkRenderer.drawResource(vg, res, sx, sy, ppu, t, playerDist)
-    local r = ppu * 0.45  -- 图标半径（略大于原矢量）
+    local r = ppu * 0.45
+    local ink = InkPalette.inkStrong
+    local inkM = InkPalette.inkMedium
 
-    -- 底部光晕（保留水墨风味，颜色按类型区分）
+    -- 底部光晕颜色按类型区分
     local glowColor = InkPalette.inkWash
     local glowAlpha = 0.18
     if res.type == "lingshi" then
-        glowColor = InkPalette.jade
-        glowAlpha = 0.22
+        glowColor = InkPalette.jade;   glowAlpha = 0.22
         if playerDist and playerDist < 3 then
             glowAlpha = 0.22 + (3 - playerDist) / 3 * 0.20
         end
     elseif res.type == "tianjing" then
-        glowColor = InkPalette.gold;  glowAlpha = 0.25
+        glowColor = InkPalette.gold;   glowAlpha = 0.25
     elseif res.type == "shouhun" then
         glowColor = InkPalette.indigo; glowAlpha = 0.22
     elseif res.type == "traceAsh" then
         glowColor = InkPalette.inkWash; glowAlpha = 0.16
     elseif res.type == "mirrorSand" then
-        glowColor = InkPalette.azure; glowAlpha = 0.20
+        glowColor = InkPalette.azure;  glowAlpha = 0.20
     elseif res.type == "soulCharm" then
-        glowColor = InkPalette.gold; glowAlpha = 0.20
+        glowColor = InkPalette.gold;   glowAlpha = 0.20
     end
 
-    -- 呼吸脉动光晕
     local pulse = math.sin(t * 2.0 + (res.x or 0) * 3.7) * 0.04
     BrushStrokes.inkWash(vg, sx, sy, r * 0.2, r * 1.15, glowColor, glowAlpha + pulse)
 
-    -- 贴图图标
+    -- 优先使用贴图
     local handle = imgHandles[res.type]
     if handle then
-        -- 轻微浮动动画
         local bobY = math.sin(t * 1.5 + (res.y or 0) * 2.3) * ppu * 0.03
         drawIcon(vg, handle, sx, sy + bobY, r, 0.92, 0)
+        return
     end
+
+    -- 矢量 fallback：每种资源独立图标
+    nvgSave(vg)
+    local bobY = math.sin(t * 1.5 + (res.y or 0) * 2.3) * ppu * 0.03
+    local cy = sy + bobY
+
+    if res.type == "lingshi" then
+        -- 灵石：六角翡翠结晶体
+        local jade = InkPalette.jade
+        local sides = 6
+        nvgBeginPath(vg)
+        for i = 0, sides do
+            local a = (i / sides) * math.pi * 2 - math.pi / 2
+            local pr = r * 0.38
+            local px = sx + math.cos(a) * pr
+            local py = cy + math.sin(a) * pr
+            if i == 0 then nvgMoveTo(vg, px, py) else nvgLineTo(vg, px, py) end
+        end
+        nvgFillColor(vg, nvgRGBAf(jade.r, jade.g, jade.b, 0.40))
+        nvgFill(vg)
+        nvgStrokeWidth(vg, 1.8)
+        nvgStrokeColor(vg, nvgRGBAf(jade.r, jade.g, jade.b, 0.70))
+        nvgStroke(vg)
+        -- 内部光线
+        nvgBeginPath(vg)
+        nvgMoveTo(vg, sx, cy - r * 0.30)
+        nvgLineTo(vg, sx - r * 0.10, cy + r * 0.15)
+        nvgMoveTo(vg, sx, cy - r * 0.30)
+        nvgLineTo(vg, sx + r * 0.12, cy + r * 0.10)
+        nvgStrokeWidth(vg, 0.8)
+        nvgStrokeColor(vg, nvgRGBAf(1, 1, 1, 0.35))
+        nvgStroke(vg)
+        -- 顶部高光
+        local sparkle = 0.3 + math.sin(t * 2.5) * 0.15
+        nvgBeginPath(vg)
+        nvgCircle(vg, sx - r * 0.08, cy - r * 0.15, r * 0.06)
+        nvgFillColor(vg, nvgRGBAf(1, 1, 1, sparkle))
+        nvgFill(vg)
+
+    elseif res.type == "tianjing" then
+        -- 天晶：菱形钻石 + 金色辉光
+        local gold = InkPalette.gold
+        nvgBeginPath(vg)
+        nvgMoveTo(vg, sx, cy - r * 0.42)
+        nvgLineTo(vg, sx + r * 0.28, cy)
+        nvgLineTo(vg, sx, cy + r * 0.42)
+        nvgLineTo(vg, sx - r * 0.28, cy)
+        nvgClosePath(vg)
+        nvgFillColor(vg, nvgRGBAf(gold.r, gold.g, gold.b, 0.35))
+        nvgFill(vg)
+        nvgStrokeWidth(vg, 2.0)
+        nvgStrokeColor(vg, nvgRGBAf(gold.r, gold.g, gold.b, 0.75))
+        nvgStroke(vg)
+        -- 十字光芒
+        nvgBeginPath(vg)
+        nvgMoveTo(vg, sx, cy - r * 0.55)
+        nvgLineTo(vg, sx, cy + r * 0.55)
+        nvgMoveTo(vg, sx - r * 0.45, cy)
+        nvgLineTo(vg, sx + r * 0.45, cy)
+        nvgStrokeWidth(vg, 0.6)
+        nvgStrokeColor(vg, nvgRGBAf(gold.r, gold.g, gold.b,
+            0.30 + math.sin(t * 3) * 0.12))
+        nvgStroke(vg)
+
+    elseif res.type == "shouhun" then
+        -- 兽魂：幽蓝火焰/魂魄
+        local indigo = InkPalette.indigo
+        -- 火焰外形（贝塞尔曲线）
+        local flicker = math.sin(t * 4 + (res.x or 0)) * r * 0.04
+        nvgBeginPath(vg)
+        nvgMoveTo(vg, sx, cy + r * 0.30)
+        nvgBezierTo(vg,
+            sx - r * 0.25, cy + r * 0.10,
+            sx - r * 0.20, cy - r * 0.25,
+            sx + flicker, cy - r * 0.45)
+        nvgBezierTo(vg,
+            sx + r * 0.20, cy - r * 0.25,
+            sx + r * 0.25, cy + r * 0.10,
+            sx, cy + r * 0.30)
+        nvgFillColor(vg, nvgRGBAf(indigo.r, indigo.g, indigo.b, 0.45))
+        nvgFill(vg)
+        -- 内层亮芯
+        nvgBeginPath(vg)
+        nvgEllipse(vg, sx, cy - r * 0.05, r * 0.08, r * 0.15)
+        nvgFillColor(vg, nvgRGBAf(0.7, 0.8, 1.0, 0.50))
+        nvgFill(vg)
+
+    elseif res.type == "traceAsh" then
+        -- 追迹灰：飘散灰烬弧线 + 散落灰点
+        local ashC = InkPalette.inkLight
+        nvgLineCap(vg, NVG_ROUND)
+        for i = 1, 3 do
+            local a0 = (i / 3) * math.pi * 2 + t * 0.5
+            local swirl = r * (0.15 + i * 0.08)
+            nvgBeginPath(vg)
+            nvgArc(vg, sx, cy, swirl, a0, a0 + math.pi * 0.6, NVG_CW)
+            nvgStrokeWidth(vg, 1.5 - i * 0.3)
+            nvgStrokeColor(vg, nvgRGBAf(ashC.r, ashC.g, ashC.b, 0.40 - i * 0.08))
+            nvgStroke(vg)
+        end
+        -- 散落灰粒
+        for i = 1, 5 do
+            local hash = ((res.x or 0) * 13 + i * 29) % 100
+            local dx = (hash % 20 - 10) * r * 0.04
+            local dy = ((hash * 3) % 20 - 10) * r * 0.04
+            local driftY = math.sin(t * 1.2 + i * 1.5) * r * 0.04
+            nvgBeginPath(vg)
+            nvgCircle(vg, sx + dx, cy + dy + driftY, 1.0 + hash % 2)
+            nvgFillColor(vg, nvgRGBAf(ashC.r, ashC.g, ashC.b, 0.35))
+            nvgFill(vg)
+        end
+
+    elseif res.type == "mirrorSand" then
+        -- 镇灵砂：菱形晶体簇 + 石青微光
+        local az = InkPalette.azure
+        for i = 1, 3 do
+            local hash = ((res.x or 0) * 7 + i * 41) % 100
+            local dx = (i - 2) * r * 0.20 + (hash % 6 - 3) * r * 0.02
+            local dy = (hash % 8 - 4) * r * 0.03
+            local h = r * (0.22 + (hash % 10) / 60)
+            local w = r * 0.08
+            nvgBeginPath(vg)
+            nvgMoveTo(vg, sx + dx, cy + dy - h)
+            nvgLineTo(vg, sx + dx + w, cy + dy)
+            nvgLineTo(vg, sx + dx, cy + dy + h * 0.4)
+            nvgLineTo(vg, sx + dx - w, cy + dy)
+            nvgClosePath(vg)
+            nvgFillColor(vg, nvgRGBAf(az.r, az.g, az.b, 0.35 + (hash % 15) / 100))
+            nvgFill(vg)
+            nvgStrokeWidth(vg, 1.0)
+            nvgStrokeColor(vg, nvgRGBAf(az.r, az.g, az.b, 0.60))
+            nvgStroke(vg)
+        end
+        -- 微光闪烁
+        local spark = math.sin(t * 3.0 + (res.x or 0)) * 0.2 + 0.3
+        nvgBeginPath(vg)
+        nvgCircle(vg, sx + r * 0.05, cy - r * 0.15, r * 0.04)
+        nvgFillColor(vg, nvgRGBAf(1, 1, 1, spark))
+        nvgFill(vg)
+
+    elseif res.type == "soulCharm" then
+        -- 归魂符：符纸矩形 + 朱砂符文线
+        local cin = InkPalette.cinnabar
+        local pw = InkPalette.paperWarm
+        local cw = r * 0.30
+        local ch = r * 0.48
+        -- 符纸
+        nvgBeginPath(vg)
+        nvgRect(vg, sx - cw, cy - ch, cw * 2, ch * 2)
+        nvgFillColor(vg, nvgRGBAf(pw.r, pw.g, pw.b, 0.85))
+        nvgFill(vg)
+        nvgStrokeWidth(vg, 1.2)
+        nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.40))
+        nvgStroke(vg)
+        -- 符文线（竖线 + 横划）
+        nvgBeginPath(vg)
+        nvgMoveTo(vg, sx, cy - ch * 0.70)
+        nvgLineTo(vg, sx, cy + ch * 0.50)
+        nvgStrokeWidth(vg, 1.5)
+        nvgStrokeColor(vg, nvgRGBAf(cin.r, cin.g, cin.b, 0.65))
+        nvgStroke(vg)
+        nvgBeginPath(vg)
+        nvgMoveTo(vg, sx - cw * 0.60, cy - ch * 0.20)
+        nvgLineTo(vg, sx + cw * 0.60, cy - ch * 0.20)
+        nvgMoveTo(vg, sx - cw * 0.45, cy + ch * 0.15)
+        nvgLineTo(vg, sx + cw * 0.45, cy + ch * 0.15)
+        nvgStrokeWidth(vg, 1.0)
+        nvgStrokeColor(vg, nvgRGBAf(cin.r, cin.g, cin.b, 0.50))
+        nvgStroke(vg)
+        -- 朱砂圆印
+        nvgBeginPath(vg)
+        nvgCircle(vg, sx, cy + ch * 0.55, r * 0.08)
+        nvgFillColor(vg, nvgRGBAf(cin.r, cin.g, cin.b, 0.55))
+        nvgFill(vg)
+    end
+
+    nvgRestore(vg)
 end
 
---- 绘制撤离点 —— 贴图图标 + 进度弧
+--- 绘制撤离点 —— 传送门法阵
 function InkRenderer.drawEvacPoint(vg, sx, sy, ppu, t, progress)
     local r = ppu * 0.48
+    local jade = InkPalette.jade
+    local gold = InkPalette.gold
+    local ink = InkPalette.inkStrong
 
     nvgSave(vg)
 
     -- 底部翡翠光晕
     local pulseAlpha = 0.18 + math.sin(t * 1.5) * 0.05
-    BrushStrokes.inkWash(vg, sx, sy, r * 0.2, r * 1.2, InkPalette.jade, pulseAlpha)
+    BrushStrokes.inkWash(vg, sx, sy, r * 0.2, r * 1.2, jade, pulseAlpha)
 
-    -- 贴图图标
+    -- 优先贴图
     local handle = imgHandles["evac"]
     if handle then
         local bobY = math.sin(t * 1.2) * ppu * 0.02
         drawIcon(vg, handle, sx, sy + bobY, r, 0.92, 0)
+    else
+        -- 矢量法阵：双层旋转八卦环 + 中心「归」字暗示
+        nvgLineCap(vg, NVG_ROUND)
+
+        -- 外环旋转
+        local spin = t * 0.3
+        nvgBeginPath(vg)
+        nvgArc(vg, sx, sy, r * 0.50, spin, spin + math.pi * 1.5, NVG_CW)
+        nvgStrokeWidth(vg, 2.0)
+        nvgStrokeColor(vg, nvgRGBAf(jade.r, jade.g, jade.b, 0.55))
+        nvgStroke(vg)
+
+        -- 内环反转
+        nvgBeginPath(vg)
+        nvgArc(vg, sx, sy, r * 0.30, -spin, -spin + math.pi * 1.2, NVG_CW)
+        nvgStrokeWidth(vg, 1.5)
+        nvgStrokeColor(vg, nvgRGBAf(jade.r, jade.g, jade.b, 0.40))
+        nvgStroke(vg)
+
+        -- 四向辐射短线
+        for i = 0, 3 do
+            local a = spin + i * math.pi * 0.5
+            nvgBeginPath(vg)
+            nvgMoveTo(vg, sx + math.cos(a) * r * 0.52, sy + math.sin(a) * r * 0.52)
+            nvgLineTo(vg, sx + math.cos(a) * r * 0.68, sy + math.sin(a) * r * 0.68)
+            nvgStrokeWidth(vg, 1.5)
+            nvgStrokeColor(vg, nvgRGBAf(jade.r, jade.g, jade.b, 0.45))
+            nvgStroke(vg)
+        end
+
+        -- 中心墨点
+        nvgBeginPath(vg)
+        nvgCircle(vg, sx, sy, r * 0.10)
+        nvgFillColor(vg, nvgRGBAf(jade.r, jade.g, jade.b, 0.60))
+        nvgFill(vg)
     end
 
-    -- 撤离进度弧（保留矢量绘制，叠加在贴图之上）
+    -- 撤离进度弧
     if progress and progress > 0 then
         nvgBeginPath(vg)
         nvgArc(vg, sx, sy, r * 1.15, -math.pi * 0.5,
             -math.pi * 0.5 + math.pi * 2 * progress, NVG_CW)
         nvgStrokeWidth(vg, 3)
-        nvgStrokeColor(vg, nvgRGBAf(
-            InkPalette.gold.r, InkPalette.gold.g, InkPalette.gold.b, 0.65))
+        nvgStrokeColor(vg, nvgRGBAf(gold.r, gold.g, gold.b, 0.65))
         nvgStroke(vg)
     end
 

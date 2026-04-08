@@ -304,13 +304,21 @@ function BookScreen:renderCard(vg, x, y, w, h, beast, entry, state, alpha, t)
     nvgText(vg, x + w - 12, row1Y,
         string.format("共捕获 %d 次", entry.count or 0))
 
-    -- 第二行：描述
+    -- 第二行：百灵志短描述
     local row2Y = y + h * 0.40
     nvgFontSize(vg, 11)
     nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_MIDDLE)
     nvgFillColor(vg, nvgRGBAf(P.inkMedium.r, P.inkMedium.g, P.inkMedium.b, 0.45 * alpha))
     local desc = beast.desc or "追踪异兽之踪迹，以灵符封印"
     nvgText(vg, x + 12, row2Y, desc)
+
+    -- 百灵志标记（有 lore 数据时显示"百灵志 ▸"提示）
+    if beast.lore then
+        nvgFontSize(vg, 9)
+        nvgTextAlign(vg, NVG_ALIGN_RIGHT + NVG_ALIGN_MIDDLE)
+        nvgFillColor(vg, nvgRGBAf(P.cinnabar.r, P.cinnabar.g, P.cinnabar.b, 0.40 * alpha))
+        nvgText(vg, x + w - 12, row2Y, "百灵志 ▸")
+    end
 
     -- 分隔细线
     local sepY = y + h * 0.55
