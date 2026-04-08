@@ -630,11 +630,10 @@ function ExploreScreen:renderTiles(vg, logW, logH, t)
     for gy = bounds.minY, bounds.maxY do
         for gx = bounds.minX, bounds.maxX do
             local tile = self.map:getTile(gx, gy)
-            if tile and tile.type ~= "wall" then
+            if tile then
                 local fogState = FogOfWar.getState(gx, gy)
                 if fogState ~= FogOfWar.DARK then
                     local sx, sy = Camera.toScreen(gx + 0.5, gy + 0.5)
-                    -- 坐标抖动：打破网格死板感
                     local jx, jy = InkTileRenderer.jitter(gx, gy, ppu)
                     InkTileRenderer.drawBase(vg, tile, sx + jx, sy + jy, ppu, t, fogState)
                 end
@@ -646,7 +645,7 @@ function ExploreScreen:renderTiles(vg, logW, logH, t)
     for gy = bounds.minY, bounds.maxY do
         for gx = bounds.minX, bounds.maxX do
             local tile = self.map:getTile(gx, gy)
-            if tile and tile.type ~= "wall" then
+            if tile then
                 local fogState = FogOfWar.getState(gx, gy)
                 if fogState ~= FogOfWar.DARK then
                     local sx, sy = Camera.toScreen(gx + 0.5, gy + 0.5)

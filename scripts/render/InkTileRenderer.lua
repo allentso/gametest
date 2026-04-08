@@ -26,8 +26,15 @@ local BASE_WASH = {
 
 --- Pass 1: 绘制瓦片底色晕染（大半径，重叠产生连续画面）
 function InkTileRenderer.drawBase(vg, tile, sx, sy, ppu, t, fogState)
-    if not tile or tile.type == "wall" then return end
+    if not tile then return end
     if fogState == FogOfWar.DARK then return end
+
+    -- 边界墙：浓墨填充，形成地图边框
+    if tile.type == "wall" then
+        BrushStrokes.inkWash(vg, sx, sy, ppu * 0.05, ppu * 0.75,
+            InkPalette.inkDark, 0.85)
+        return
+    end
 
     local alphaScale = fogState == FogOfWar.EXPLORED and 0.30 or 1.0
     local fn = BASE_WASH[tile.type]
@@ -55,8 +62,15 @@ end
 ------------------------------------------------------------
 
 function InkTileRenderer.drawDetail(vg, tile, sx, sy, ppu, t, fogState)
-    if not tile or tile.type == "wall" then return end
+    if not tile then return end
     if fogState == FogOfWar.DARK then return end
+
+    -- 边界墙：厚重皴纹 + 裂痕线
+    if tile.type == "wall" then
+        InkTileRenderer.drawWallDetail(vg, tile, sx, sy, ppu, t,
+            fogState == FogOfWar.EXPLORED and 0.30 or 1.0)
+        return
+    end
 
     local alphaScale = fogState == FogOfWar.EXPLORED and 0.30 or 1.0
 
@@ -124,23 +138,44 @@ function InkTileRenderer.drawRockDetail(vg, tile, sx, sy, ppu, t, alphaScale)
     local inkM = InkPalette.inkMedium
 
     if tile.blocked then
-        -- 不可通行巨石：大面积浓墨填充 + 厚重皴法 + 轮廓弧线
-        BrushStrokes.inkWash(vg, sx, sy, ppu * 0.05, ppu * 0.42,
-            inkS, 0.30 * alphaScale)
+        -- 不可通行巨石（俯视）：不规则多边形岩体 + 皴法纹理
+        local hash = seed * 7 % 100
+
+        -- 不规则岩石轮廓（5-7边多边形，模拟俯视巨石）
+        local sides = 5 + hash % 3
+        nvgBeginPath(vg)
+        for i = 0, sides do
+            local a = (i / sides) * math.pi * 2
+            local rVar = ppu * (0.32 + ((hash * (i + 1) * 13) % 100) / 500)
+            local px = sx + math.cos(a) * rVar
+            local py = sy + math.sin(a) * rVar
+            if i == 0 then nvgMoveTo(vg, px, py) else nvgLineTo(vg, px, py) end
+        end
+        nvgClosePath(vg)
+        nvgFillColor(vg, nvgRGBAf(inkS.r, inkS.g, inkS.b, 0.28 * alphaScale))
+        nvgFill(vg)
+        nvgStrokeWidth(vg, 2.0)
+        nvgStrokeColor(vg, nvgRGBAf(inkS.r, inkS.g, inkS.b, 0.50 * alphaScale))
+        nvgStroke(vg)
+
+        -- 厚重皴法
         local cunCount = math.min(7, (tile.cunCount or 4) + 2)
-        BrushStrokes.cunTexture(vg, sx, sy, ppu * 0.55,
+        BrushStrokes.cunTexture(vg, sx, sy, ppu * 0.45,
             inkS, 0.35 * alphaScale, seed, cunCount)
+
+        -- 高光裂隙（从中心向外的短线，暗示岩石表面裂纹）
         nvgSave(vg)
         nvgLineCap(vg, NVG_ROUND)
-        local hash = seed * 7 % 100
         for i = 1, 2 do
-            local arcR = ppu * (0.28 + i * 0.08 + hash / 600)
-            local startA = (hash % 60 + i * 90) * math.pi / 180
+            local crackA = (hash % 60 + i * 120) * math.pi / 180
+            local crackR1 = ppu * 0.06
+            local crackR2 = ppu * (0.22 + (hash % 10) / 100)
             nvgBeginPath(vg)
-            nvgArc(vg, sx, sy, arcR, startA, startA + math.pi * 0.7, NVG_CW)
-            nvgStrokeWidth(vg, 2.0 + i * 0.3)
-            nvgStrokeColor(vg, nvgRGBAf(inkS.r, inkS.g, inkS.b,
-                (0.40 - i * 0.08) * alphaScale))
+            nvgMoveTo(vg, sx + math.cos(crackA) * crackR1, sy + math.sin(crackA) * crackR1)
+            nvgLineTo(vg, sx + math.cos(crackA) * crackR2, sy + math.sin(crackA) * crackR2)
+            nvgStrokeWidth(vg, 1.2)
+            nvgStrokeColor(vg, nvgRGBAf(InkPalette.inkWash.r, InkPalette.inkWash.g,
+                InkPalette.inkWash.b, 0.25 * alphaScale))
             nvgStroke(vg)
         end
         nvgRestore(vg)
@@ -275,88 +310,95 @@ function InkTileRenderer.drawWaterDetail(vg, tile, sx, sy, ppu, t, alphaScale)
     nvgRestore(vg)
 end
 
---- 竹林细节: 可通行=稀疏竹影 / 不可通行=密竹丛
+--- 竹林细节（俯视）: 可通行=稀疏竹截面 / 不可通行=密竹丛
+--- 俯视视角：圆形竹截面 + 放射状竹叶
 function InkTileRenderer.drawBambooDetail(vg, tile, sx, sy, ppu, t, alphaScale)
     local seed = tile.seed or 0
     local inkS = InkPalette.inkStrong
     local inkM = InkPalette.inkMedium
+    local jade = InkPalette.jade
 
     nvgSave(vg)
     nvgLineCap(vg, NVG_ROUND)
 
-    local stalkCount, stalkAlpha, stalkWidth, leafChance
+    local stalkCount, stalkR, stalkAlpha, leafCount, leafLen
     if tile.blocked then
-        stalkCount = 4 + seed % 2
-        stalkAlpha = 0.75
-        stalkWidth = 3.0
-        leafChance = 0.85
-        -- 不可通行底部加一层暗绿墨晕
+        stalkCount = 4 + seed % 3
+        stalkR = ppu * 0.06
+        stalkAlpha = 0.70
+        leafCount = 4
+        leafLen = ppu * 0.22
+        -- 不可通行：深绿底色墨晕
         BrushStrokes.inkWash(vg, sx, sy, ppu * 0.05, ppu * 0.50,
-            InkPalette.jade, 0.18 * alphaScale)
+            jade, 0.20 * alphaScale)
     else
         stalkCount = 1 + seed % 2
+        stalkR = ppu * 0.045
         stalkAlpha = 0.45
-        stalkWidth = 2.0
-        leafChance = 0.4
+        leafCount = 2
+        leafLen = ppu * 0.15
     end
 
     for si = 1, stalkCount do
         local hash = (seed * 13 + si * 37) % 100
-        local spread = tile.blocked and 0.06 or 0.04
-        local xOff = ((hash % 20) - 10) * ppu * spread
-        local wind = math.sin(t * 0.8 + seed * 0.5 + si * 1.1) * ppu * 0.03
-        local bx = sx + xOff + wind
-        local by1 = sy + ppu * 0.72
-        local by2 = sy - ppu * 0.72
+        local spread = tile.blocked and 0.08 or 0.05
+        local cx = sx + ((hash % 20) - 10) * ppu * spread
+        local cy = sy + (((hash * 3) % 20) - 10) * ppu * spread
 
+        -- 竹截面圆（浓墨圆环 + 内部空心）
         nvgBeginPath(vg)
-        nvgMoveTo(vg, bx, by1)
-        nvgLineTo(vg, bx + wind * 0.6, by2)
-        local sw = stalkWidth + (hash % 3) * 0.4
-        nvgStrokeWidth(vg, sw)
+        nvgCircle(vg, cx, cy, stalkR)
+        nvgStrokeWidth(vg, tile.blocked and 2.2 or 1.6)
         nvgStrokeColor(vg, nvgRGBAf(inkS.r, inkS.g, inkS.b, stalkAlpha * alphaScale))
         nvgStroke(vg)
+        -- 内部淡绿填充
+        nvgBeginPath(vg)
+        nvgCircle(vg, cx, cy, stalkR * 0.50)
+        nvgFillColor(vg, nvgRGBAf(jade.r, jade.g, jade.b, 0.25 * alphaScale))
+        nvgFill(vg)
 
-        local nodeCount = tile.blocked and (2 + hash % 2) or (1 + hash % 2)
-        for n = 1, nodeCount do
-            local nodeY = by1 + (by2 - by1) * n / (nodeCount + 1) + (hash % 5 - 2)
-            local nodeX = bx + wind * 0.3 * n / nodeCount
+        -- 放射状竹叶（从截面向外辐射的水滴形弧线）
+        local baseAngle = (hash * 0.07) + t * 0.15
+        for li = 1, leafCount do
+            local leafAngle = baseAngle + (li - 1) * (math.pi * 2 / leafCount)
+                + ((hash * li) % 30) * 0.02
+            local windSway = math.sin(t * 0.8 + si * 1.1 + li * 0.7) * 0.08
+            leafAngle = leafAngle + windSway
+            local tipX = cx + math.cos(leafAngle) * leafLen
+            local tipY = cy + math.sin(leafAngle) * leafLen
+            local midX = cx + math.cos(leafAngle) * leafLen * 0.5
+            local midY = cy + math.sin(leafAngle) * leafLen * 0.5
+            -- 竹叶弧线（用贝塞尔模拟窄长叶片）
+            local perpX = -math.sin(leafAngle) * ppu * 0.04
+            local perpY = math.cos(leafAngle) * ppu * 0.04
             nvgBeginPath(vg)
-            nvgMoveTo(vg, nodeX - sw * 0.9, nodeY)
-            nvgLineTo(vg, nodeX + sw * 0.9, nodeY)
-            nvgStrokeWidth(vg, 1.2)
-            nvgStrokeColor(vg, nvgRGBAf(inkM.r, inkM.g, inkM.b, 0.45 * alphaScale))
+            nvgMoveTo(vg, cx + math.cos(leafAngle) * stalkR, cy + math.sin(leafAngle) * stalkR)
+            nvgQuadTo(vg, midX + perpX, midY + perpY, tipX, tipY)
+            nvgStrokeWidth(vg, tile.blocked and 1.8 or 1.2)
+            nvgStrokeColor(vg, nvgRGBAf(inkS.r, inkS.g, inkS.b,
+                (tile.blocked and 0.55 or 0.30) * alphaScale))
             nvgStroke(vg)
-
-            if (hash % 100) / 100 < leafChance then
-                local leafDir = (n % 2 == 0) and 1 or -1
-                local lx = nodeX + leafDir * ppu * 0.14
-                local ly = nodeY - ppu * 0.07
-                local leafWind = math.sin(t * 1.2 + n * 0.7 + seed) * ppu * 0.015
-                nvgBeginPath(vg)
-                nvgMoveTo(vg, nodeX, nodeY)
-                nvgQuadTo(vg,
-                    nodeX + leafDir * ppu * 0.08, nodeY - ppu * 0.11,
-                    lx + leafWind, ly)
-                nvgStrokeWidth(vg, tile.blocked and 2.0 or 1.4)
-                nvgStrokeColor(vg, nvgRGBAf(inkS.r, inkS.g, inkS.b,
-                    (tile.blocked and 0.60 or 0.35) * alphaScale))
-                nvgStroke(vg)
-            end
+            -- 对称的另半侧叶片
+            nvgBeginPath(vg)
+            nvgMoveTo(vg, cx + math.cos(leafAngle) * stalkR, cy + math.sin(leafAngle) * stalkR)
+            nvgQuadTo(vg, midX - perpX, midY - perpY, tipX, tipY)
+            nvgStrokeWidth(vg, tile.blocked and 1.8 or 1.2)
+            nvgStrokeColor(vg, nvgRGBAf(inkS.r, inkS.g, inkS.b,
+                (tile.blocked and 0.50 or 0.25) * alphaScale))
+            nvgStroke(vg)
         end
     end
 
-    -- 不可通行密竹：底部交织灌木线
+    -- 不可通行密竹：额外地面覆盖（交织根系墨痕）
     if tile.blocked then
         for i = 1, 3 do
             local hash = (seed * 7 + i * 19) % 100
-            local bsx = sx + (hash % 20 - 10) * ppu * 0.04
-            local bsy = sy + ppu * 0.45
+            local a0 = (hash * 0.06)
+            local arcR = ppu * (0.20 + i * 0.06)
             nvgBeginPath(vg)
-            nvgMoveTo(vg, bsx - ppu * 0.15, bsy)
-            nvgQuadTo(vg, bsx, bsy - ppu * 0.08, bsx + ppu * 0.15, bsy + ppu * 0.03)
-            nvgStrokeWidth(vg, 1.5)
-            nvgStrokeColor(vg, nvgRGBAf(inkM.r, inkM.g, inkM.b, 0.35 * alphaScale))
+            nvgArc(vg, sx, sy, arcR, a0, a0 + math.pi * 0.5, NVG_CW)
+            nvgStrokeWidth(vg, 1.2)
+            nvgStrokeColor(vg, nvgRGBAf(inkM.r, inkM.g, inkM.b, 0.25 * alphaScale))
             nvgStroke(vg)
         end
     end
@@ -398,6 +440,32 @@ function InkTileRenderer.drawDangerDetail(vg, tile, sx, sy, ppu, t, alphaScale)
     -- 中心朱砂警告点（脉冲闪烁）
     local pulse = math.sin(t * 3.0 + seed) * 0.15 + 0.35
     BrushStrokes.inkDotStable(vg, sx, sy, 3.0, cin, pulse * alphaScale, seed + 99)
+end
+
+--- 边界墙细节: 浓墨皴法 + 裂纹线条（地图不可逾越的边界）
+function InkTileRenderer.drawWallDetail(vg, tile, sx, sy, ppu, t, alphaScale)
+    local seed = tile.seed or 0
+    local inkD = InkPalette.inkDark
+    local inkS = InkPalette.inkStrong
+
+    -- 密集皴法纹理
+    BrushStrokes.cunTexture(vg, sx, sy, ppu * 0.60,
+        inkD, 0.45 * alphaScale, seed, 8)
+
+    -- 2-3 条不规则裂纹
+    nvgSave(vg)
+    nvgLineCap(vg, NVG_ROUND)
+    for i = 1, 2 + seed % 2 do
+        local hash = (seed * 11 + i * 41) % 100
+        local startA = (hash % 180) * math.pi / 180
+        local r = ppu * (0.25 + (hash % 20) / 100)
+        nvgBeginPath(vg)
+        nvgArc(vg, sx, sy, r, startA, startA + math.pi * (0.4 + (hash % 30) / 100), NVG_CW)
+        nvgStrokeWidth(vg, 1.5 + (hash % 3) * 0.4)
+        nvgStrokeColor(vg, nvgRGBAf(inkS.r, inkS.g, inkS.b, 0.35 * alphaScale))
+        nvgStroke(vg)
+    end
+    nvgRestore(vg)
 end
 
 ------------------------------------------------------------

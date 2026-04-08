@@ -1,5 +1,6 @@
 --- 异兽 AI 状态机 + 朝向系统
 local CollisionSystem = require("systems.CollisionSystem")
+local Config = require("Config")
 
 local BeastAI = {}
 
@@ -69,6 +70,8 @@ function BeastAI.update(beast, dt, playerX, playerY, map)
         local dx = math.cos(angle) * speed * dt
         local dy = math.sin(angle) * speed * dt
         CollisionSystem.tryMove(beast, dx, dy, map)
+        -- 边界钳位
+        BeastAI.clampToMap(beast)
         if BeastAI.distTo(beast, playerX, playerY) > 8 then
             beast.aiState = "idle"
             beast.idleDuration = 2 + math.random() * 2
@@ -98,7 +101,15 @@ function BeastAI.moveToward(beast, target, dt, speed, map)
         beast.x = beast.x + mx
         beast.y = beast.y + my
     end
+    BeastAI.clampToMap(beast)
     return false
+end
+
+function BeastAI.clampToMap(beast)
+    local mapW = Config.MAP_WIDTH or 20
+    local mapH = Config.MAP_HEIGHT or 30
+    beast.x = math.max(1.5, math.min(mapW - 2.5, beast.x))
+    beast.y = math.max(1.5, math.min(mapH - 2.5, beast.y))
 end
 
 function BeastAI.distTo(beast, px, py)
@@ -108,9 +119,13 @@ function BeastAI.distTo(beast, px, py)
 end
 
 function BeastAI.randomNearby(beast, map, radius)
+    local mapW = Config.MAP_WIDTH or 20
+    local mapH = Config.MAP_HEIGHT or 30
     for attempt = 1, 10 do
         local tx = beast.x + (math.random() - 0.5) * radius * 2
         local ty = beast.y + (math.random() - 0.5) * radius * 2
+        tx = math.max(2, math.min(mapW - 3, tx))
+        ty = math.max(2, math.min(mapH - 3, ty))
         if not map:isBlocked(math.floor(tx), math.floor(ty)) then
             return { x = tx, y = ty }
         end
