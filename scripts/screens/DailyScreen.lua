@@ -5,6 +5,25 @@ local ScreenManager = require("systems.ScreenManager")
 local GameState = require("systems.GameState")
 local DailySystem = require("systems.DailySystem")
 
+local InkRenderer = require("render.InkRenderer")
+
+local RES_NAMES = {
+    lingshi = "灵石", shouhun = "兽魂", tianjing = "天晶", lingyin = "灵印",
+    traceAsh = "追迹灰", mirrorSand = "镇灵砂", soulCharm = "归魂符",
+    beastEye = "兽瞳", sealEcho = "封印回响",
+    sealer_t3 = "金缕珠", sealer_t4 = "天命盘",
+}
+
+--- 把 reward table 格式化为可读字符串，如 "灵石×20  兽魂×3"
+local function formatReward(reward)
+    if not reward then return "" end
+    local parts = {}
+    for k, v in pairs(reward) do
+        table.insert(parts, (RES_NAMES[k] or k) .. "×" .. v)
+    end
+    return table.concat(parts, "  ")
+end
+
 local DailyScreen = {}
 DailyScreen.__index = DailyScreen
 
@@ -13,6 +32,7 @@ function DailyScreen.new(params)
     self.fadeIn = 0
     self.t = 0
     self.buttons = {}
+    self.toasts = {}
     return self
 end
 
@@ -25,6 +45,17 @@ function DailyScreen:update(dt)
     if self.fadeIn < 1 then
         self.fadeIn = math.min(1, self.fadeIn + dt * 1.8)
     end
+    -- toast 生命周期
+    for i = #self.toasts, 1, -1 do
+        self.toasts[i].life = self.toasts[i].life - dt
+        if self.toasts[i].life <= 0 then
+            table.remove(self.toasts, i)
+        end
+    end
+end
+
+function DailyScreen:addToast(msg)
+    table.insert(self.toasts, { text = msg, life = 2.5, maxLife = 2.5 })
 end
 
 function DailyScreen:render(vg, logW, logH, t)
@@ -101,26 +132,37 @@ function DailyScreen:render(vg, logW, logH, t)
         end
         nvgText(vg, cx, cy - 6, tostring(i))
 
-        -- 签到标记
-        if isSigned then
+        -- 奖励文本 + 签到标记
+        local reward = DailySystem.loginRewards[i]
+        if reward then
+            nvgFontSize(vg, 8)
+            if isSigned then
+                nvgFillColor(vg, nvgRGBAf(
+                    InkPalette.gold.r, InkPalette.gold.g, InkPalette.gold.b, 0.50 * alpha))
+            else
+                nvgFillColor(vg, nvgRGBAf(
+                    InkPalette.inkLight.r, InkPalette.inkLight.g, InkPalette.inkLight.b, 0.45 * alpha))
+            end
+            local parts = {}
+            for k, v in pairs(reward) do
+                table.insert(parts, (RES_NAMES[k] or k) .. "×" .. v)
+            end
+            local line1 = parts[1] or ""
+            local line2 = parts[2] or nil
+            if isSigned then
+                -- 已签到：天数旁加 ✓，奖励显示在下方
+                nvgText(vg, cx, cy + 8, "✓ " .. line1)
+            else
+                nvgText(vg, cx, cy + 8, line1)
+            end
+            if line2 then
+                nvgText(vg, cx, cy + 17, line2)
+            end
+        elseif isSigned then
             nvgFontSize(vg, 10)
             nvgFillColor(vg, nvgRGBAf(
                 InkPalette.gold.r, InkPalette.gold.g, InkPalette.gold.b, 0.60 * alpha))
-            nvgText(vg, cx, cy + 10, "已签")
-        end
-
-        -- 奖励预览
-        local reward = DailySystem.loginRewards[i]
-        if reward and not isSigned then
-            nvgFontSize(vg, 9)
-            nvgFillColor(vg, nvgRGBAf(
-                InkPalette.inkLight.r, InkPalette.inkLight.g, InkPalette.inkLight.b, 0.45 * alpha))
-            local rewardText = ""
-            for k, v in pairs(reward) do
-                rewardText = k
-                break
-            end
-            nvgText(vg, cx, cy + 10, rewardText)
+            nvgText(vg, cx, cy + 10, "✓")
         end
     end
 
@@ -136,8 +178,8 @@ function DailyScreen:render(vg, logW, logH, t)
         InkPalette.inkStrong.r, InkPalette.inkStrong.g, InkPalette.inkStrong.b, 0.75 * alpha))
     nvgText(vg, logW * 0.1, taskStartY, "每日任务")
 
-    local taskCardH = logH * 0.08
-    local taskGap = 8
+    local taskCardH = logH * 0.095
+    local taskGap = 6
     local tStartY = taskStartY + 18
 
     for i, task in ipairs(DailySystem.tasks) do
@@ -146,7 +188,7 @@ function DailyScreen:render(vg, logW, logH, t)
         local isComplete = progress >= task.target
         local claimed = GameState.data.dailyClaimed and GameState.data.dailyClaimed[task.id]
 
-        -- 卡片
+        -- 卡片背景
         local taskColor = claimed and InkPalette.inkWash
             or isComplete and InkPalette.gold
             or InkPalette.inkLight
@@ -156,14 +198,21 @@ function DailyScreen:render(vg, logW, logH, t)
         nvgFillColor(vg, nvgRGBAf(taskColor.r, taskColor.g, taskColor.b, 0.06 * alpha))
         nvgFill(vg)
 
-        -- 任务描述
+        -- 第一行：任务描述
         nvgFontSize(vg, 13)
         nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_MIDDLE)
         nvgFillColor(vg, nvgRGBAf(
             InkPalette.inkStrong.r, InkPalette.inkStrong.g, InkPalette.inkStrong.b, 0.75 * alpha))
-        nvgText(vg, logW * 0.12, ty + taskCardH * 0.5, task.desc)
+        nvgText(vg, logW * 0.12, ty + taskCardH * 0.35, task.desc)
 
-        -- 进度
+        -- 第二行：奖励内容
+        nvgFontSize(vg, 10)
+        nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_MIDDLE)
+        nvgFillColor(vg, nvgRGBAf(
+            InkPalette.gold.r, InkPalette.gold.g, InkPalette.gold.b, 0.55 * alpha))
+        nvgText(vg, logW * 0.12, ty + taskCardH * 0.72, "奖励: " .. formatReward(task.reward))
+
+        -- 右侧：进度/状态
         nvgTextAlign(vg, NVG_ALIGN_RIGHT + NVG_ALIGN_MIDDLE)
         nvgFontSize(vg, 12)
         if claimed then
@@ -184,6 +233,13 @@ function DailyScreen:render(vg, logW, logH, t)
             nvgText(vg, logW * 0.88, ty + taskCardH * 0.5,
                 string.format("%d/%d", progress, task.target))
         end
+    end
+
+    -- 渲染 toast 消息
+    for i, toast in ipairs(self.toasts) do
+        local toastAlpha = math.min(1, toast.life / 0.5)
+        local ty = logH * 0.45 + (i - 1) * 44
+        InkRenderer.drawToast(vg, logW * 0.5, ty, toast.text, toastAlpha, logW)
     end
 end
 
@@ -208,6 +264,8 @@ function DailyScreen:onInput(action, sx, sy)
                     end
                     GameState.data.dailyClaimed[btn.taskId] = true
                     GameState.save()
+                    -- toast 反馈
+                    self:addToast("获得 " .. formatReward(task.reward))
                 end
                 return true
             end

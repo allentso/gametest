@@ -228,12 +228,12 @@ end
 
 function ExploreMap:generateEvacuationPoints()
     self.evacuationPoints = {}
-    -- 在地图边缘安全区放撤离点
+    -- 在地图四角放撤离点（左下、右下、左上、右上）
     local positions = {
-        { x = 3,              y = 3 },
-        { x = self.width - 4, y = 3 },
-        { x = 3,              y = math.floor(self.height / 2) },
-        { x = self.width - 4, y = math.floor(self.height / 2) },
+        { x = 3,              y = 3 },                           -- 左下
+        { x = self.width - 4, y = 3 },                           -- 右下
+        { x = 3,              y = self.height - 4 },              -- 左上
+        { x = self.width - 4, y = self.height - 4 },              -- 右上
     }
     for _, pos in ipairs(positions) do
         -- 确保撤离点可通行

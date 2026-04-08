@@ -195,7 +195,14 @@ function GameState.getExpProgress()
 end
 
 --- 结算：将本局收益合入全局
-function GameState.settleSession(sessionContracts, sessionResources, lostContracts)
+--- @param sessionContracts table 成功灵契列表
+--- @param sessionResources table 资源收益
+--- @param lostContracts table 丢失灵契列表
+--- @param options table|nil { evacType = "normal"|"forced"|"timeout" }
+function GameState.settleSession(sessionContracts, sessionResources, lostContracts, options)
+    options = options or {}
+    local evacType = options.evacType or "normal"
+
     -- 合入资源
     for resType, amount in pairs(sessionResources or {}) do
         GameState.addResource(resType, amount)
@@ -208,11 +215,19 @@ function GameState.settleSession(sessionContracts, sessionResources, lostContrac
     end
 
     GameState.data.totalExplorations = GameState.data.totalExplorations + 1
-    GameState.data.totalEvacuations = GameState.data.totalEvacuations + 1
 
-    -- 结算封灵师经验
-    local exp = 50  -- 完成一局
-    exp = exp + 80  -- 成功撤离
+    -- 结算封灵师经验（按撤离类型区分）
+    local exp = 50  -- 完成一局基础经验
+    if evacType == "normal" then
+        -- 正常撤离：+80经验，计入撤离统计
+        exp = exp + 80
+        GameState.data.totalEvacuations = GameState.data.totalEvacuations + 1
+    elseif evacType == "forced" then
+        -- 强制撤离(forceEnd)：经验减半，不计入撤离统计
+        exp = math.floor(exp * 0.5)
+    end
+    -- timeout: 超时被吞噬，无额外经验
+
     for _, contract in ipairs(sessionContracts or {}) do
         local qExp = ({ R = 20, SR = 60, SSR = 200 })[contract.quality] or 20
         exp = exp + qExp
@@ -224,6 +239,15 @@ function GameState.settleSession(sessionContracts, sessionResources, lostContrac
     end
     GameState.addExp(exp)
 
+    -- 流派进度+1（仅正常撤离）
+    if evacType == "normal" then
+        local SessionStateRef = require("systems.SessionState")
+        local school = SessionStateRef.selectedSchool
+        if school then
+            GameState.data.schoolProgress[school] = (GameState.data.schoolProgress[school] or 0) + 1
+        end
+    end
+
     GameState.save()
 end
 
@@ -233,6 +257,11 @@ function GameState.checkDailyLogin()
     if GameState.data.lastLoginDate ~= today then
         GameState.data.lastLoginDate = today
         GameState.data.loginDays = GameState.data.loginDays + 1
+        -- 重置每日任务领取状态和进度
+        GameState.data.dailyClaimed = {}
+        local DailySystem = require("systems.DailySystem")
+        DailySystem.reset()
+        GameState.save()
         return true -- 是新的一天
     end
     return false

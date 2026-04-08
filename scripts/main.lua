@@ -62,6 +62,7 @@ function Start()
 
     -- 接入每日任务事件监听
     local DailySystem = require("systems.DailySystem")
+    DailySystem.reset()  -- 初始化当日进度表
     DailySystem.listen()
 
     -- 进入大厅屏幕

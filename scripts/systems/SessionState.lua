@@ -47,6 +47,10 @@ end
 function SessionState.addContract(contract)
     table.insert(SessionState.contracts, contract)
     SessionState.stats.beastsCaptured = SessionState.stats.beastsCaptured + 1
+    -- 记录被动效果（用于异兽被动判定）
+    if contract.beastId then
+        SessionState.capturedPassives[contract.beastId] = true
+    end
 end
 
 function SessionState.getContracts()
@@ -87,6 +91,7 @@ function SessionState.loadSealers(globalInventory)
     SessionState.inventory.sealer_t2 = globalInventory.sealer_t2 or 0
     SessionState.inventory.sealer_t3 = globalInventory.sealer_t3 or 0
     SessionState.inventory.sealer_t4 = globalInventory.sealer_t4 or 0
+    SessionState.inventory.sealer_t5 = globalInventory.sealer_t5 or 0
 end
 
 return SessionState

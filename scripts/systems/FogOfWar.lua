@@ -73,6 +73,32 @@ function FogOfWar.collapseEdge(progress)
     end
 end
 
+--- 随机揭示地图的一定比例（用于迷雾残图道具）
+--- @param fraction number 0~1，揭示比例
+function FogOfWar.revealRandom(fraction)
+    if not FogOfWar.grid then return end
+    -- 收集所有DARK格子
+    local darkCells = {}
+    for y = 1, FogOfWar.height do
+        for x = 1, FogOfWar.width do
+            if FogOfWar.grid[y][x] == FogOfWar.DARK then
+                table.insert(darkCells, { x = x, y = y })
+            end
+        end
+    end
+    -- 按比例揭示
+    local revealCount = math.floor(#darkCells * fraction)
+    -- Fisher-Yates 洗牌取前 N 个
+    for i = #darkCells, 2, -1 do
+        local j = math.random(1, i)
+        darkCells[i], darkCells[j] = darkCells[j], darkCells[i]
+    end
+    for i = 1, math.min(revealCount, #darkCells) do
+        local cell = darkCells[i]
+        FogOfWar.grid[cell.y][cell.x] = FogOfWar.EXPLORED
+    end
+end
+
 --- 判断实体是否可见
 function FogOfWar.isEntityVisible(wx, wy)
     return FogOfWar.getState(math.floor(wx), math.floor(wy)) == FogOfWar.VISIBLE

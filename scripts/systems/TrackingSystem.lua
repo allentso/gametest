@@ -23,6 +23,7 @@ function TrackingSystem.reset()
     TrackingSystem.srTriggered = false
     TrackingSystem.ssrTriggered = false
     TrackingSystem.extraFlashBonus = 0
+    TrackingSystem.ssrReduceBonus = 0
     TrackingSystem.investigatedTypes = {}
 end
 
@@ -36,7 +37,8 @@ function TrackingSystem.investigate(clue, hasTraceAsh)
     TrackingSystem.clueCount = TrackingSystem.clueCount + 1
     clue.investigated = true
     if hasTraceAsh then
-        EventBus.emit("resource_changed", "traceAsh", -1)
+        local SessionState = require("systems.SessionState")
+        SessionState.addItem("traceAsh", -1)
     end
 
     -- 记录已调查的线索类型
@@ -57,8 +59,9 @@ function TrackingSystem.investigate(clue, hasTraceAsh)
         EventBus.emit("beast_spawn_request", "SR")
     end
 
-    -- 5线索 → 闪光判定
-    if TrackingSystem.clueCount >= 5 and not TrackingSystem.ssrTriggered then
+    -- 5线索 → 闪光判定（追迹大成可减少所需线索数）
+    local ssrThreshold = 5 - (TrackingSystem.ssrReduceBonus or 0)
+    if TrackingSystem.clueCount >= ssrThreshold and not TrackingSystem.ssrTriggered then
         TrackingSystem.ssrTriggered = true
         if TrackingSystem.rollFlash(false, false) then
             EventBus.emit("beast_spawn_request", "SSR")
@@ -73,7 +76,7 @@ function TrackingSystem.investigate(clue, hasTraceAsh)
     end
 end
 
---- 闪光判定: 基础15% + 线索加成 + 封灵器加成 + 保底加成
+--- 闪光判定: 基础15% + 线索加成 + 封灵器加成 + 保底加成 + 流派加成
 function TrackingSystem.rollFlash(hasT4, hasT5)
     local base = 0.15
     local extraClues = math.max(0, TrackingSystem.clueCount - 5)
@@ -84,7 +87,9 @@ function TrackingSystem.rollFlash(hasT4, hasT5)
     end
     local pityBonus = PitySystem.getSSRFlashBonus()
     local extraBonus = TrackingSystem.extraFlashBonus or 0
-    local totalChance = base + clueBonus + sealerBonus + pityBonus + extraBonus
+    -- 追迹流大成：闪光概率+10%
+    local schoolBonus = TrackingSystem.schoolFlashBonus or 0
+    local totalChance = base + clueBonus + sealerBonus + pityBonus + extraBonus + schoolBonus
     return math.random() < totalChance
 end
 

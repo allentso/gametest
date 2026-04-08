@@ -25,13 +25,14 @@ local SCHOOLS = {
 }
 
 local ITEMS = {
-    { id = "sealer_t2", name = "青玉壶",   category = "sealer" },
-    { id = "sealer_t3", name = "金缕珠",   category = "sealer" },
-    { id = "sealer_t4", name = "天命盘",   category = "sealer" },
-    { id = "sealer_t5", name = "混沌印",   category = "sealer" },
-    { id = "rushWard",  name = "疾风符",   category = "item" },
-    { id = "fogMap",    name = "迷雾残图", category = "item" },
-    { id = "sealEcho",  name = "封印回响", category = "item" },
+    { id = "sealer_t2", name = "青玉壶",   category = "sealer", desc = "封印成功率85%", usage = "压制后选用" },
+    { id = "sealer_t3", name = "金缕珠",   category = "sealer", desc = "封印成功率92%", usage = "压制后选用" },
+    { id = "sealer_t4", name = "天命盘",   category = "sealer", desc = "封印成功率98%", usage = "压制后选用" },
+    { id = "sealer_t5", name = "混沌印",   category = "sealer", desc = "封印成功率100%", usage = "压制后选用" },
+    { id = "rushWard",  name = "疾风符",   category = "item",   desc = "移速+30%，持续60秒", usage = "点击激活" },
+    { id = "fogMap",    name = "迷雾残图", category = "item",   desc = "开局揭示25%地图", usage = "自动生效" },
+    { id = "beastEye",  name = "兽目珠",   category = "item",   desc = "显示异兽位置15秒", usage = "点击激活" },
+    { id = "sealEcho",  name = "封印回响", category = "item",   desc = "压制失败可重试1次", usage = "自动生效" },
 }
 
 function PrepareScreen.new(params)
@@ -251,9 +252,9 @@ function PrepareScreen:renderItemSelect(vg, logW, logH, alpha)
     nvgText(vg, logW * 0.5, logH * 0.15, "素灵符(免费)×3 已自动装备")
 
     local cardW = logW * 0.85
-    local cardH = 48
+    local cardH = 62
     local startY = logH * 0.20
-    local gap = 6
+    local gap = 5
     local cardX = (logW - cardW) * 0.5
 
     for i, item in ipairs(ITEMS) do
@@ -270,24 +271,38 @@ function PrepareScreen:renderItemSelect(vg, logW, logH, alpha)
         nvgFontSize(vg, 14)
         nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_MIDDLE)
         nvgFillColor(vg, nvgRGBAf(P.inkStrong.r, P.inkStrong.g, P.inkStrong.b, 0.8 * alpha))
-        nvgText(vg, cardX + 12, cy + cardH * 0.5, item.name)
+        nvgText(vg, cardX + 12, cy + cardH * 0.28, item.name)
+
+        -- 效果描述
+        nvgFontSize(vg, 10)
+        nvgFillColor(vg, nvgRGBAf(P.inkMedium.r, P.inkMedium.g, P.inkMedium.b, 0.6 * alpha))
+        nvgText(vg, cardX + 12, cy + cardH * 0.58, item.desc or "")
+
+        -- 使用方式标签
+        if item.usage then
+            local usageColor = (item.usage == "点击激活") and P.jade or P.azure
+            nvgFontSize(vg, 9)
+            nvgFillColor(vg, nvgRGBAf(usageColor.r, usageColor.g, usageColor.b, 0.55 * alpha))
+            nvgText(vg, cardX + 12, cy + cardH * 0.82, item.usage)
+        end
 
         -- 库存
         nvgFontSize(vg, 11)
-        nvgFillColor(vg, nvgRGBAf(P.inkMedium.r, P.inkMedium.g, P.inkMedium.b, 0.6 * alpha))
-        nvgText(vg, cardX + 90, cy + cardH * 0.5, "库存:" .. stock)
+        nvgFillColor(vg, nvgRGBAf(P.inkMedium.r, P.inkMedium.g, P.inkMedium.b, 0.55 * alpha))
+        nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_MIDDLE)
+        nvgText(vg, cardX + cardW * 0.48, cy + cardH * 0.28, "库存:" .. stock)
 
         -- 已选数量
         nvgFontSize(vg, 16)
         nvgTextAlign(vg, NVG_ALIGN_RIGHT + NVG_ALIGN_MIDDLE)
         nvgFillColor(vg, nvgRGBAf(P.inkStrong.r, P.inkStrong.g, P.inkStrong.b, 0.85 * alpha))
-        nvgText(vg, cardX + cardW - 50, cy + cardH * 0.5, tostring(sel))
+        nvgText(vg, cardX + cardW - 50, cy + cardH * 0.45, tostring(sel))
 
         -- +/- 按钮
         local btnR = 12
         local minusCX = cardX + cardW - 80
         local plusCX = cardX + cardW - 18
-        local btnCY = cy + cardH * 0.5
+        local btnCY = cy + cardH * 0.45
 
         nvgBeginPath(vg)
         nvgCircle(vg, minusCX, btnCY, btnR)
@@ -381,7 +396,7 @@ end
 ------------------------------------------------------------
 
 function PrepareScreen:onInput(action, sx, sy)
-    if action ~= "tap" and action ~= "down" then return false end
+    if action ~= "tap" then return false end
 
     for _, btn in ipairs(self.buttons) do
         if sx >= btn.x and sx <= btn.x + btn.w

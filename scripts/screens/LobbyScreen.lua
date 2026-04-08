@@ -3,6 +3,7 @@ local InkPalette = require("data.InkPalette")
 local BrushStrokes = require("render.BrushStrokes")
 local ScreenManager = require("systems.ScreenManager")
 local GameState = require("systems.GameState")
+local InkRenderer = require("render.InkRenderer")
 local Config = require("Config")
 
 local LobbyScreen = {}
@@ -13,12 +14,25 @@ function LobbyScreen.new(params)
     self.fadeIn = 0
     self.t = 0
     self.buttons = {}
+    -- 里程碑弹出
+    self.milestone = nil        -- { title, note, count }
+    self.milestoneAlpha = 0
+    self.milestoneDismissed = false
     return self
 end
 
 function LobbyScreen:onEnter()
     self.fadeIn = 0
     self.t = 0
+    -- 检查待展示的里程碑
+    if GameState.data.pendingMilestone then
+        self.milestone = GameState.data.pendingMilestone
+        self.milestoneAlpha = 0
+        self.milestoneDismissed = false
+        GameState.data.pendingMilestone = nil
+        GameState.save()
+        print("[LobbyScreen] 发现新里程碑: " .. self.milestone.title)
+    end
     print("[LobbyScreen] 进入大厅")
 end
 
@@ -30,6 +44,15 @@ function LobbyScreen:update(dt)
     self.t = self.t + dt
     if self.fadeIn < 1 then
         self.fadeIn = math.min(1, self.fadeIn + dt * 1.8)
+    end
+    -- 里程碑弹出淡入淡出
+    if self.milestone and not self.milestoneDismissed then
+        self.milestoneAlpha = math.min(1, self.milestoneAlpha + dt * 1.5)
+    elseif self.milestoneDismissed and self.milestoneAlpha > 0 then
+        self.milestoneAlpha = math.max(0, self.milestoneAlpha - dt * 2.0)
+        if self.milestoneAlpha <= 0 then
+            self.milestone = nil
+        end
     end
 end
 
@@ -135,6 +158,11 @@ function LobbyScreen:render(vg, logW, logH, t)
         InkPalette.inkLight.r, InkPalette.inkLight.g, InkPalette.inkLight.b,
         0.55 * alpha))
     nvgText(vg, logW * 0.5, statY, statText)
+
+    -- 里程碑弹出叠加层
+    if self.milestone and self.milestoneAlpha > 0.01 then
+        self:renderMilestone(vg, logW, logH, t)
+    end
 end
 
 --- 远景水墨山景
@@ -217,6 +245,14 @@ function LobbyScreen:drawResources(vg, logW, y, alpha)
 end
 
 function LobbyScreen:onInput(action, sx, sy)
+    -- 里程碑弹出：点击关闭
+    if self.milestone and not self.milestoneDismissed and self.milestoneAlpha > 0.5 then
+        if action == "down" or action == "tap" then
+            self.milestoneDismissed = true
+        end
+        return true -- 弹出期间拦截所有输入
+    end
+
     if action ~= "tap" then return false end
 
     for _, btn in ipairs(self.buttons) do
@@ -239,6 +275,88 @@ function LobbyScreen:onInput(action, sx, sy)
         end
     end
     return false
+end
+
+------------------------------------------------------------
+-- 里程碑弹出卡片
+------------------------------------------------------------
+function LobbyScreen:renderMilestone(vg, logW, logH, t)
+    local P = InkPalette
+    local a = self.milestoneAlpha
+    local ms = self.milestone
+
+    -- 半透明遮罩
+    nvgBeginPath(vg)
+    nvgRect(vg, 0, 0, logW, logH)
+    nvgFillColor(vg, nvgRGBAf(0, 0, 0, 0.45 * a))
+    nvgFill(vg)
+
+    -- 卡片尺寸
+    local cardW = math.min(logW * 0.82, 320)
+    local cardH = logH * 0.48
+    local cardX = (logW - cardW) * 0.5
+    local cardY = (logH - cardH) * 0.5
+
+    -- 卡片底
+    nvgSave(vg)
+    nvgBeginPath(vg)
+    nvgRoundedRect(vg, cardX, cardY, cardW, cardH, 6)
+    nvgFillColor(vg, nvgRGBAf(P.paperWarm.r, P.paperWarm.g, P.paperWarm.b, 0.96 * a))
+    nvgFill(vg)
+    nvgStrokeWidth(vg, 1.5)
+    nvgStrokeColor(vg, nvgRGBAf(P.gold.r, P.gold.g, P.gold.b, 0.50 * a))
+    nvgStroke(vg)
+
+    nvgScissor(vg, cardX, cardY, cardW, cardH)
+
+    local cx = cardX + cardW * 0.5
+    local curY = cardY + 28
+
+    -- 装饰墨点
+    BrushStrokes.inkDotStable(vg, cx, curY, 6, P.gold, 0.55 * a, 99)
+    curY = curY + 20
+
+    -- "封灵师手记" 标签
+    nvgFontFace(vg, "sans")
+    nvgFontSize(vg, 13)
+    nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_TOP)
+    nvgFillColor(vg, nvgRGBAf(P.inkMedium.r, P.inkMedium.g, P.inkMedium.b, 0.6 * a))
+    nvgText(vg, cx, curY, "— 封灵师手记 —")
+    curY = curY + 26
+
+    -- 里程碑标题
+    nvgFontSize(vg, 22)
+    nvgFillColor(vg, nvgRGBAf(P.gold.r, P.gold.g, P.gold.b, 0.90 * a))
+    nvgText(vg, cx, curY, ms.title)
+    curY = curY + 30
+
+    -- 图鉴数提示
+    nvgFontSize(vg, 12)
+    nvgFillColor(vg, nvgRGBAf(P.jade.r, P.jade.g, P.jade.b, 0.70 * a))
+    nvgText(vg, cx, curY, "图鉴收录达到 " .. ms.count .. " 种")
+    curY = curY + 24
+
+    -- 分隔线
+    BrushStrokes.inkLine(vg, cx - 50, curY, cx + 50, curY, 1, P.inkWash, 0.3 * a, 55)
+    curY = curY + 16
+
+    -- 手记正文（nvgTextBox 自动换行）
+    nvgFontSize(vg, 14)
+    nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_TOP)
+    nvgFillColor(vg, nvgRGBAf(P.inkStrong.r, P.inkStrong.g, P.inkStrong.b, 0.80 * a))
+    local textPad = 24
+    local textW = cardW - textPad * 2
+    nvgTextBox(vg, cardX + textPad, curY, textW, ms.note)
+
+    nvgResetScissor(vg)
+    nvgRestore(vg)
+
+    -- 底部提示
+    local tipAlpha = (0.3 + math.sin(t * 2) * 0.15) * a
+    nvgFontSize(vg, 12)
+    nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_TOP)
+    nvgFillColor(vg, nvgRGBAf(P.inkLight.r, P.inkLight.g, P.inkLight.b, tipAlpha))
+    nvgText(vg, logW * 0.5, cardY + cardH + 16, "点击任意处继续")
 end
 
 return LobbyScreen

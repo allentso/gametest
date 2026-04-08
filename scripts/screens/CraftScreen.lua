@@ -88,7 +88,8 @@ function CraftScreen:render(vg, logW, logH, t)
 
     local RES_NAMES = {
         lingshi = "灵石", shouhun = "兽魂", tianjing = "天晶",
-        lingyin = "灵印", traceAsh = "追迹灰",
+        lingyin = "灵印", traceAsh = "追迹灰", mirrorSand = "镇灵砂",
+        soulCharm = "归魂符", beastEye = "兽瞳", sealEcho = "封印回响",
     }
 
     -- 合成卡片

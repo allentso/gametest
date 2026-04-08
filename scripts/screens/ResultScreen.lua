@@ -5,6 +5,7 @@ local GameState = require("systems.GameState")
 local ScreenManager = require("systems.ScreenManager")
 local BrushStrokes = require("render.BrushStrokes")
 local InkRenderer = require("render.InkRenderer")
+local LoreData = require("data.LoreData")
 
 local ResultScreen = {}
 ResultScreen.__index = ResultScreen
@@ -17,6 +18,7 @@ function ResultScreen.new(params)
     self.resources = params.resources or {}
     self.stats = params.stats or {}
     self.elapsed = params.elapsed or 0
+    self.evacType = params.evacType or "normal"
 
     -- 动画状态
     self.animTime = 0
@@ -35,7 +37,26 @@ function ResultScreen:onEnter()
     -- 结算
     if not self.settled then
         self.settled = true
-        GameState.settleSession(self.contracts, self.resources, self.lostContracts)
+        -- 记录结算前图鉴数，用于里程碑检测
+        local oldBestiaryCount = GameState.getBestiaryCount()
+        GameState.settleSession(self.contracts, self.resources, self.lostContracts, { evacType = self.evacType })
+        -- 检测新里程碑
+        local newBestiaryCount = GameState.getBestiaryCount()
+        local milestone = LoreData.getNewMilestone(oldBestiaryCount, newBestiaryCount)
+        if milestone then
+            GameState.data.pendingMilestone = {
+                title = milestone.title,
+                note = milestone.note,
+                count = milestone.count,
+            }
+            -- 发放里程碑奖励（灵印等）
+            if milestone.reward then
+                for resKey, amount in pairs(milestone.reward) do
+                    GameState.addResource(resKey, amount)
+                end
+                GameState.data.pendingMilestone.reward = milestone.reward
+            end
+        end
         GameState.save()
     end
 end

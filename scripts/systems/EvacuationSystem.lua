@@ -39,6 +39,10 @@ function EvacuationSystem.startEvacuation(point, options)
     if options.isCollapse then duration = 1.5 end
     -- 疾风符：2秒
     if options.hasRushWard then duration = math.min(duration, 2.0) end
+    -- 流派撤离减时
+    if options.schoolTimeSave and options.schoolTimeSave > 0 then
+        duration = math.max(0.5, duration - options.schoolTimeSave)
+    end
     EvacuationSystem.evacuateDuration = duration
     EventBus.emit("evacuation_start", point.type)
 end
@@ -91,7 +95,7 @@ function EvacuationSystem.getProgress()
 end
 
 --- 计算灵契不稳定列表
-function EvacuationSystem.checkContractStability(contracts, soulCharmCount, hasIceSilk)
+function EvacuationSystem.checkContractStability(contracts, soulCharmCount, hasIceSilk, schoolProtect)
     local unstable = {}
     for _, contract in ipairs(contracts) do
         local triggerChance = ({ R = 0.05, SR = 0.30, SSR = 0.50 })[contract.quality] or 0.05
@@ -106,6 +110,12 @@ function EvacuationSystem.checkContractStability(contracts, soulCharmCount, hasI
         if math.random() < triggerChance then
             table.insert(unstable, contract)
         end
+    end
+    -- 流派保护：移除末尾N只不稳定灵契
+    schoolProtect = schoolProtect or 0
+    while schoolProtect > 0 and #unstable > 0 do
+        table.remove(unstable, #unstable)
+        schoolProtect = schoolProtect - 1
     end
     return unstable
 end
