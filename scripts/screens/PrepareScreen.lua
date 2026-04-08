@@ -247,9 +247,21 @@ function PrepareScreen:renderItemSelect(vg, logW, logH, alpha)
     nvgFillColor(vg, nvgRGBAf(P.inkStrong.r, P.inkStrong.g, P.inkStrong.b, 0.85 * alpha))
     nvgText(vg, logW * 0.5, logH * 0.10, "配置道具")
 
+    -- 计算已选道具格数（仅限 category=="item" 的道具）
+    local usedSlots = 0
+    for _, item in ipairs(ITEMS) do
+        if item.category == "item" then
+            usedSlots = usedSlots + (self.selectedItems[item.id] or 0)
+        end
+    end
+    local maxSlots = 3
+
     nvgFontSize(vg, 12)
     nvgFillColor(vg, nvgRGBAf(P.inkLight.r, P.inkLight.g, P.inkLight.b, 0.6 * alpha))
-    nvgText(vg, logW * 0.5, logH * 0.15, "素灵符(免费)×3 已自动装备")
+    nvgText(vg, logW * 0.5, logH * 0.13, "素灵符(免费)×3 已自动装备")
+    local slotColor = usedSlots >= maxSlots and P.cinnabar or P.jade
+    nvgFillColor(vg, nvgRGBAf(slotColor.r, slotColor.g, slotColor.b, 0.7 * alpha))
+    nvgText(vg, logW * 0.5, logH * 0.16, string.format("道具格: %d / %d", usedSlots, maxSlots))
 
     local cardW = logW * 0.85
     local cardH = 62
@@ -417,6 +429,22 @@ function PrepareScreen:onInput(action, sx, sy)
             elseif btn.type == "plus" then
                 local stock = GameState.getResource(btn.itemId)
                 if (self.selectedItems[btn.itemId] or 0) < stock then
+                    -- 道具格限制：非封灵器类道具总数不超过3
+                    local isItem = false
+                    for _, it in ipairs(ITEMS) do
+                        if it.id == btn.itemId and it.category == "item" then
+                            isItem = true; break
+                        end
+                    end
+                    if isItem then
+                        local slots = 0
+                        for _, it in ipairs(ITEMS) do
+                            if it.category == "item" then
+                                slots = slots + (self.selectedItems[it.id] or 0)
+                            end
+                        end
+                        if slots >= 3 then return true end
+                    end
                     self.selectedItems[btn.itemId] = (self.selectedItems[btn.itemId] or 0) + 1
                 end
                 return true
@@ -438,6 +466,12 @@ function PrepareScreen:onInput(action, sx, sy)
                         SessionState.addItem(id, count)
                     end
                 end
+
+                -- 迷雾残图代价：自带素灵符从3个减少到2个
+                if (self.selectedItems["fogMap"] or 0) > 0 then
+                    SessionState.inventory.sealer_free = 2
+                end
+
                 GameState.save()
 
                 local ExploreScreen = require("screens.ExploreScreen")

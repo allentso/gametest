@@ -1,4 +1,4 @@
---- 保底系统 - SSR硬保底80次 / SR硬保底15次
+--- 保底系统 - SSR硬保底40次 / SR硬保底10次
 local SaveGuard = require("systems.SaveGuard")
 local Config = require("Config")
 

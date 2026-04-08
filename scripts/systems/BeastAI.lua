@@ -22,7 +22,8 @@ BeastAI.STATE = {
     BURST_STOP = "burst_stop",
 }
 
-BeastAI.SENSE_RANGE = { R = 3, SR = 4, SSR = 6 }
+-- 品质额外感知加成（叠加到异兽自身 senseRange 上）
+BeastAI.QUALITY_SENSE_BONUS = { R = 0, SR = 1, SSR = 2 }
 
 ------------------------------------------------------------
 -- Main update
@@ -94,7 +95,7 @@ function BeastAI.update(beast, dt, playerX, playerY, map, options)
         end
 
         local dist = BeastAI.distTo(beast, playerX, playerY)
-        local senseRange = BeastAI.SENSE_RANGE[beast.quality] or 3
+        local senseRange = (beast.senseRange or 3) + (BeastAI.QUALITY_SENSE_BONUS[beast.quality] or 0)
         if playerInBamboo then senseRange = senseRange - 2 end
         if options.playerInDanger then senseRange = senseRange - 1 end
         -- 玄狐在竹林中感知缩减

@@ -96,8 +96,15 @@ end
 
 --- 计算灵契不稳定列表
 function EvacuationSystem.checkContractStability(contracts, soulCharmCount, hasIceSilk, schoolProtect)
+    -- 按 SSR→SR→R 排序处理
+    local sorted = {}
+    for _, c in ipairs(contracts) do table.insert(sorted, c) end
+    table.sort(sorted, function(a, b)
+        local rank = { R = 1, SR = 2, SSR = 3 }
+        return (rank[a.quality] or 0) > (rank[b.quality] or 0)
+    end)
     local unstable = {}
-    for _, contract in ipairs(contracts) do
+    for _, contract in ipairs(sorted) do
         local triggerChance = ({ R = 0.05, SR = 0.30, SSR = 0.50 })[contract.quality] or 0.05
         if soulCharmCount > 0 then
             local reduction = ({ R = 0.05, SR = 0.20, SSR = 0.30 })[contract.quality] or 0

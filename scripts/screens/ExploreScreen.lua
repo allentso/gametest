@@ -60,12 +60,18 @@ local SCHOOL_EFFECTS = {
 }
 
 --- 获取当前流派层级 (0=无/1=初学/2=精通/3=大成)
+--- 需同时满足：使用次数达标 AND 封灵师境界达标
 local function getSchoolTier()
     local school = SessionState.selectedSchool
     if not school then return 0 end
     local progress = GameState.data.schoolProgress[school] or 0
-    if progress >= 10 then return 3
-    elseif progress >= 5 then return 2
+    local level = GameState.getSealerLevel()
+
+    -- 大成：使用10次 + 境界5
+    if progress >= 10 and level >= 5 then return 3
+    -- 精通：使用5次 + 境界3
+    elseif progress >= 5 and level >= 3 then return 2
+    -- 初学：使用1次（默认解锁）
     elseif progress >= 1 then return 1
     else return 0 end
 end
@@ -127,20 +133,14 @@ function ExploreScreen.new(params)
     -- 玩家静止计时（白泽凝视用）
     self.playerStillTimer = 0
 
+    -- 紧急逃脱
+    self.emergencyEscapeAvailable = false
+
     return self
 end
 
 function ExploreScreen:onEnter()
-    -- 保存准备阶段选择
-    local savedBiome = SessionState.selectedBiome
-    local savedSchool = SessionState.selectedSchool
-
-    -- 重置单局状态
-    SessionState.reset()
-
-    -- 恢复准备阶段选择
-    SessionState.selectedBiome = savedBiome
-    SessionState.selectedSchool = savedSchool
+    -- SessionState.reset() 已在 PrepareScreen 出发时调用，此处不再重复
 
     -- 初始化地图
     self.map = ExploreMap.new()
@@ -202,6 +202,17 @@ function ExploreScreen:onEnter()
             x = patch.x, y = patch.y,
             life = patch.duration, maxLife = patch.duration,
         })
+    end, self)
+
+    EventBus.on("habit_deduced", function()
+        local nearestBeast = self:findNearestActiveBeast()
+        if nearestBeast then
+            local qx = nearestBeast.x < Config.MAP_WIDTH * 0.5 and "西" or "东"
+            local qy = nearestBeast.y > Config.MAP_HEIGHT * 0.5 and "北" or "南"
+            self:addToast("习性推断：异兽活动于" .. qy .. qx .. "象限")
+        else
+            self:addToast("习性推断完成，但未锁定方位")
+        end
     end, self)
 
     -- 流派追迹大成：SSR线索需求-1 + 闪光概率+10%
@@ -343,6 +354,21 @@ function ExploreScreen:update(dt)
         self.playerStillTimer = 0
     else
         self.playerStillTimer = self.playerStillTimer + dt
+    end
+
+    -- 线索调查计时器
+    if self.investigateTarget then
+        if self.playerMoving then
+            -- 移动时取消调查
+            self.investigateTarget = nil
+            self.investigateTimer = 0
+            self:addToast("调查中断")
+        else
+            self.investigateTimer = self.investigateTimer + dt
+            if self.investigateTimer >= self.investigateDuration then
+                self:completeInvestigation()
+            end
+        end
     end
 
     -- 墨迹更新
@@ -661,6 +687,10 @@ function ExploreScreen:updateInteraction()
         self.interactType = "evacuate"
         self.interactTarget = nearPt
     end
+
+    -- 5. 紧急逃脱条件：collapse阶段 + 距离最近撤离点 >8格
+    self.emergencyEscapeAvailable = (Timer.phase == "collapse")
+        and nearPt and nearDist > 8
 end
 
 ------------------------------------------------------------
@@ -713,20 +743,17 @@ function ExploreScreen:doInteract()
 
     elseif self.interactType == "investigate" then
         local clue = self.interactTarget
-        local hasTraceAsh = SessionState.hasItem("traceAsh")
-        if hasTraceAsh then
-            SessionState.addItem("traceAsh", -1)
+        if not self.investigateTarget then
+            -- 开始调查：启动计时器
+            local hasTraceAsh = SessionState.hasItem("traceAsh")
+            local duration = TrackingSystem.getInvestigateTime(clue.type, hasTraceAsh)
+            self.investigateTarget = clue
+            self.investigateTimer = 0
+            self.investigateDuration = duration
+            self.investigateHasTraceAsh = hasTraceAsh
+            self:addToast("正在调查...")
         end
-        TrackingSystem.investigate(clue, hasTraceAsh)
-        SessionState.stats.cluesInvestigated = SessionState.stats.cluesInvestigated + 1
-        self:addToast("发现线索！")
-        TutorialSystem.checkTrigger("investigate")
-
-        -- 高危区线索每日任务
-        local py = math.floor(self.playerY)
-        if py / Config.MAP_HEIGHT > 0.7 then
-            EventBus.emit("danger_clue_investigated")
-        end
+        -- 调查推进在 update 中处理，此处不做完成动作
 
     elseif self.interactType == "collect" then
         local res = self.interactTarget
@@ -768,6 +795,104 @@ function ExploreScreen:doInteract()
             TutorialSystem.checkTrigger("evacuate")
         end
     end
+end
+
+function ExploreScreen:completeInvestigation()
+    local clue = self.investigateTarget
+    if not clue then return end
+
+    local hasTraceAsh = self.investigateHasTraceAsh
+    if hasTraceAsh then
+        SessionState.addItem("traceAsh", -1)
+    end
+    TrackingSystem.investigate(clue, false)
+    SessionState.stats.cluesInvestigated = SessionState.stats.cluesInvestigated + 1
+
+    -- 根据线索类型生成信息提示
+    local infoMsg = self:getClueInfoText(clue)
+    self:addToast(infoMsg or "发现线索！")
+    TutorialSystem.checkTrigger("investigate")
+
+    -- 高危区线索每日任务
+    local py = math.floor(self.playerY)
+    if py / Config.MAP_HEIGHT > 0.7 then
+        EventBus.emit("danger_clue_investigated")
+    end
+
+    self.investigateTarget = nil
+    self.investigateTimer = 0
+    self.investigateHasTraceAsh = nil
+end
+
+--- 根据线索类型返回调查后的信息文本
+function ExploreScreen:getClueInfoText(clue)
+    if clue.type == "footprint" then
+        -- 足迹：显示附近异兽的大致方向
+        local nearestBeast = self:findNearestActiveBeast()
+        if nearestBeast then
+            local dx = nearestBeast.x - clue.x
+            local dy = nearestBeast.y - clue.y
+            local dir = ""
+            if math.abs(dy) > math.abs(dx) then
+                dir = dy > 0 and "北方" or "南方"
+            else
+                dir = dx > 0 and "东方" or "西方"
+            end
+            return "足迹痕迹指向" .. dir
+        end
+        return "发现足迹，但踪迹已散"
+    elseif clue.type == "resonance" then
+        -- 共鸣：显示可能的异兽品质
+        local ssrThreshold = 5 - (TrackingSystem.ssrReduceBonus or 0)
+        if TrackingSystem.clueCount >= ssrThreshold then
+            return "共鸣强烈！感应到SSR级灵气"
+        elseif TrackingSystem.clueCount >= 3 then
+            return "共鸣明显，感应到SR级灵气"
+        else
+            return "共鸣微弱，周围有R级异兽活动"
+        end
+    elseif clue.type == "nest" then
+        -- 巢穴：显示异兽种类
+        local biome = SessionState.selectedBiome
+        local beastInfo = biome
+            and BeastData.getRandomForBiome(biome)
+            or BeastData.getRandom()
+        if beastInfo then
+            return "巢穴痕迹：疑似" .. beastInfo.name .. "栖息地"
+        end
+        return "发现异兽巢穴"
+    elseif clue.type == "scentMark" then
+        -- 气息印记：揭示附近2格资源
+        local revealed = 0
+        for _, res in ipairs(self.map.resources) do
+            if not res.collected then
+                local rdx = res.x - clue.x
+                local rdy = res.y - clue.y
+                if rdx * rdx + rdy * rdy <= 4 then
+                    res.scentRevealed = true
+                    revealed = revealed + 1
+                end
+            end
+        end
+        if revealed > 0 then
+            return "气息印记揭示了附近" .. revealed .. "处资源"
+        end
+        return "气息印记已消散，附近无资源"
+    end
+    return "发现线索！"
+end
+
+function ExploreScreen:findNearestActiveBeast()
+    local best, bestDist = nil, math.huge
+    for _, beast in ipairs(self.beasts) do
+        if beast.aiState ~= "captured" and beast.aiState ~= "hidden" then
+            local dx = beast.x - self.playerX
+            local dy = beast.y - self.playerY
+            local d = dx * dx + dy * dy
+            if d < bestDist then best = beast; bestDist = d end
+        end
+    end
+    return best
 end
 
 function ExploreScreen:onSuppressResult(result)
@@ -941,6 +1066,27 @@ function ExploreScreen:hasCapturedBeast(beastId)
     return false
 end
 
+--- 紧急逃脱（collapse阶段，距撤离点>8格）
+function ExploreScreen:doEmergencyEscape()
+    if not self.emergencyEscapeAvailable then return end
+    local contracts = SessionState.getContracts()
+    -- 撤离流大成：紧急逃脱无灵契损失
+    local evacEffect = getSchoolEffect()
+    if evacEffect and evacEffect.safeEscape then
+        self:addToast("紧急逃脱！流派之力保全灵契")
+        self:goToResult({}, "normal")
+        return
+    end
+    local lostContracts = EvacuationSystem.emergencyEscape(contracts)
+    if #lostContracts > 0 then
+        self:addToast("紧急逃脱！丢失了" .. lostContracts[1].name)
+    elseif #contracts == 0 then
+        SessionState.resources.lingshi = math.floor((SessionState.resources.lingshi or 0) * 0.5)
+        self:addToast("紧急逃脱！灵石损失50%")
+    end
+    self:goToResult(lostContracts, "normal")
+end
+
 --- 使用特殊道具
 function ExploreScreen:useSpecialItem(itemId)
     if itemId == "rushWard" then
@@ -996,6 +1142,16 @@ function ExploreScreen:onInput(action, sx, sy)
     if self.paused then return false end
 
     if action == "down" then
+        -- 紧急逃脱按钮
+        if self.emergencyEscapeBtn then
+            local eb = self.emergencyEscapeBtn
+            if sx >= eb.x and sx <= eb.x + eb.w
+               and sy >= eb.y and sy <= eb.y + eb.h then
+                self:doEmergencyEscape()
+                return true
+            end
+        end
+
         -- 特殊道具按钮
         if self.itemButtons then
             for _, btn in ipairs(self.itemButtons) do
@@ -1270,7 +1426,7 @@ function ExploreScreen:renderEntities(vg, logW, logH, t)
         if nearPt and nearDist > 2.0 then
             local dx = nearPt.x - self.playerX
             local dy = nearPt.y - self.playerY
-            local angle = math.atan(dy, dx)
+            local angle = math.atan2(dy, dx)
             local arrowDist = ppu * 2.0
             local ax = psx + math.cos(angle) * arrowDist
             local ay = psy + math.sin(angle) * arrowDist
@@ -1716,6 +1872,31 @@ function ExploreScreen:renderControls(vg, logW, logH, t)
         nvgText(vg, btnX + 1, btnY + 1, labels[self.interactType] or "")
     end
 
+    -- 调查进度条（调查进行中时显示）
+    if self.investigateTarget and self.investigateDuration > 0 then
+        local prog = math.min(1, self.investigateTimer / self.investigateDuration)
+        local barW = logW * 0.35
+        local barH = 6
+        local barX = (logW - barW) * 0.5
+        local barY = logH * 0.65
+        -- 底框
+        nvgBeginPath(vg)
+        nvgRoundedRect(vg, barX, barY, barW, barH, 3)
+        nvgFillColor(vg, nvgRGBAf(P.inkWash.r, P.inkWash.g, P.inkWash.b, 0.35))
+        nvgFill(vg)
+        -- 填充
+        nvgBeginPath(vg)
+        nvgRoundedRect(vg, barX, barY, barW * prog, barH, 3)
+        nvgFillColor(vg, nvgRGBAf(P.jade.r, P.jade.g, P.jade.b, 0.75))
+        nvgFill(vg)
+        -- 文字
+        nvgFontFace(vg, "sans")
+        nvgFontSize(vg, 11)
+        nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_BOTTOM)
+        nvgFillColor(vg, nvgRGBAf(P.inkMedium.r, P.inkMedium.g, P.inkMedium.b, 0.7))
+        nvgText(vg, logW * 0.5, barY - 3, "调查中...")
+    end
+
     -- 撤离进度
     if EvacuationSystem.evacuating then
         local prog = EvacuationSystem.getProgress()
@@ -1728,6 +1909,33 @@ function ExploreScreen:renderControls(vg, logW, logH, t)
             nvgStrokeWidth(vg, 3)
             nvgStroke(vg)
         end
+    end
+
+    -- 紧急逃脱按钮（collapse阶段 + 距撤离点>8格时显示）
+    if self.emergencyEscapeAvailable then
+        local ebW = 120
+        local ebH = 36
+        local ebX = (logW - ebW) * 0.5
+        local ebY = logH * 0.58
+        local pulse = 0.7 + math.sin(t * 4) * 0.2
+
+        nvgBeginPath(vg)
+        nvgRoundedRect(vg, ebX, ebY, ebW, ebH, 6)
+        nvgFillColor(vg, nvgRGBAf(P.cinnabar.r, P.cinnabar.g, P.cinnabar.b, 0.20 * pulse))
+        nvgFill(vg)
+        nvgStrokeWidth(vg, 1.5)
+        nvgStrokeColor(vg, nvgRGBAf(P.cinnabar.r, P.cinnabar.g, P.cinnabar.b, 0.65 * pulse))
+        nvgStroke(vg)
+
+        nvgFontFace(vg, "sans")
+        nvgFontSize(vg, 14)
+        nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+        nvgFillColor(vg, nvgRGBAf(P.cinnabar.r, P.cinnabar.g, P.cinnabar.b, 0.90 * pulse))
+        nvgText(vg, logW * 0.5, ebY + ebH * 0.5, "紧急逃脱")
+
+        self.emergencyEscapeBtn = { x = ebX, y = ebY, w = ebW, h = ebH }
+    else
+        self.emergencyEscapeBtn = nil
     end
 end
 

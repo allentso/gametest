@@ -33,10 +33,10 @@ function TrackingSystem.getInvestigateTime(clueType, hasTraceAsh)
     return ct and ct.investigate_time or 2.0
 end
 
-function TrackingSystem.investigate(clue, hasTraceAsh)
+function TrackingSystem.investigate(clue, consumeTraceAsh)
     TrackingSystem.clueCount = TrackingSystem.clueCount + 1
     clue.investigated = true
-    if hasTraceAsh then
+    if consumeTraceAsh then
         local SessionState = require("systems.SessionState")
         SessionState.addItem("traceAsh", -1)
     end

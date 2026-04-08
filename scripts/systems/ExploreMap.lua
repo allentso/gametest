@@ -73,9 +73,8 @@ end
 
 function ExploreMap:generateTile(x, y, w, h)
     local tile = { blocked = false }
-    -- 区域划分: 安全区(边缘2格) → 搜索区 → 稀有区 → 高危区
-    local depth = y  -- 从底部向上深入
-    local distFromEdge = math.min(x, w - x + 1, y, h - y + 1)
+    -- 深度百分比（y=1底部→y=h顶部，深入=向上）
+    local depthPct = y / h
 
     -- 边界墙
     if x == 1 or x == w or y == 1 or y == h then
@@ -84,29 +83,30 @@ function ExploreMap:generateTile(x, y, w, h)
         return tile
     end
 
-    -- 按深度和随机分配地形
+    -- 按深度百分比划分区域：
+    -- 安全区 ≤15%  搜索区 15%-40%  稀有区 40%-70%  高危区 >70%
     local roll = math.random()
-    if distFromEdge <= 3 then
-        -- 安全区: 主要是草地和小径
+    if depthPct <= 0.15 then
+        -- 安全区: 35%小路 50%草地 15%竹林
         if roll < 0.35 then tile.type = "path"
         elseif roll < 0.85 then tile.type = "grass"
         else tile.type = "bamboo"; tile.blocked = (math.random() < 0.6) end
-    elseif depth <= h * 0.4 then
-        -- 搜索区
+    elseif depthPct <= 0.40 then
+        -- 搜索区: 混合地形，开始出现岩石
         if roll < 0.50 then tile.type = "grass"
         elseif roll < 0.70 then tile.type = "rock"; tile.blocked = (math.random() < 0.35)
         elseif roll < 0.85 then tile.type = "bamboo"; tile.blocked = (math.random() < 0.5)
         elseif roll < 0.93 then tile.type = "water"; tile.blocked = true
         else tile.type = "path" end
-    elseif depth <= h * 0.7 then
-        -- 稀有区
+    elseif depthPct <= 0.70 then
+        -- 稀有区: 10%瘴气，密集障碍
         if roll < 0.40 then tile.type = "grass"
         elseif roll < 0.65 then tile.type = "rock"; tile.blocked = (math.random() < 0.4)
         elseif roll < 0.80 then tile.type = "bamboo"; tile.blocked = (math.random() < 0.55)
         elseif roll < 0.90 then tile.type = "water"; tile.blocked = true
         else tile.type = "danger" end
     else
-        -- 高危区
+        -- 高危区: 25%瘴气
         if roll < 0.30 then tile.type = "grass"
         elseif roll < 0.55 then tile.type = "rock"; tile.blocked = (math.random() < 0.45)
         elseif roll < 0.70 then tile.type = "danger"

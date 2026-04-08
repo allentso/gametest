@@ -16,6 +16,11 @@ CraftSystem.recipes = {
 function CraftSystem.canCraft(recipeId, inventory)
     local recipe = CraftSystem.getRecipe(recipeId)
     if not recipe then return false end
+    -- T5混沌印使用后，本局禁止合成任何封灵器
+    if recipe.category == "sealer" then
+        local SessionState = require("systems.SessionState")
+        if SessionState.t5Used then return false end
+    end
     for res, amount in pairs(recipe.cost) do
         if (inventory[res] or 0) < amount then return false end
     end
