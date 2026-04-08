@@ -368,96 +368,124 @@ function InkRenderer.drawToast(vg, cx, cy, message, alpha, screenW)
     nvgRestore(vg)
 end
 
---- 绘制玩家角色（俯视斗笠）
+--- 绘制玩家角色（3/4侧面：斗笠+袍服人物）
 function InkRenderer.drawPlayer(vg, sx, sy, ppu, facing, t)
     local r = ppu * 0.55
     local ink = InkPalette.inkStrong
+    local inkM = InkPalette.inkMedium
     local cin = InkPalette.cinnabar
+    local pw = InkPalette.paperWarm
 
     nvgSave(vg)
 
-    -- 行走烟尘（3个渐隐墨团在身后）
+    -- facing 决定左右朝向（-1=左, 1=右, 0=正面）
+    local dirSign = 0
     if facing then
-        local backX = -math.cos(-facing)
-        local backY = -math.sin(-facing)
+        local fx = math.cos(facing)
+        if math.abs(fx) > 0.15 then dirSign = fx > 0 and 1 or -1 end
+    end
+
+    -- 行走烟尘（脚下散墨）
+    if facing then
         for i = 1, 3 do
-            local dist = r * (0.6 + i * 0.35)
-            local dustAlpha = (0.18 - i * 0.04) * (math.sin(t * 3 + i) * 0.3 + 0.7)
-            local dustR = r * (0.15 + i * 0.06)
-            BrushStrokes.inkWash(vg,
-                sx + backX * dist, sy + backY * dist,
-                dustR * 0.3, dustR,
+            local dustX = sx + (math.sin(t * 4 + i * 1.7)) * r * 0.15
+            local dustY = sy + r * 0.40 + i * r * 0.12
+            local dustAlpha = (0.15 - i * 0.03) * (math.sin(t * 3 + i) * 0.3 + 0.7)
+            BrushStrokes.inkWash(vg, dustX, dustY,
+                r * 0.06, r * (0.10 + i * 0.04),
                 InkPalette.inkWash, dustAlpha)
         end
     end
 
-    -- 地面投影（椭圆形暗影）
+    -- 脚底投影
     nvgBeginPath(vg)
-    nvgEllipse(vg, sx, sy + r * 0.35, r * 0.50, r * 0.18)
-    nvgFillColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.25))
+    nvgEllipse(vg, sx, sy + r * 0.42, r * 0.35, r * 0.10)
+    nvgFillColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.20))
     nvgFill(vg)
 
-    -- 斗笠主体（大浓墨圆 + 编织纹路）
+    -- 身体（梯形袍服，从肩到脚）
+    local shoulderW = r * 0.28
+    local hemW = r * 0.38
+    local shoulderY = sy - r * 0.12
+    local hemY = sy + r * 0.38
     nvgBeginPath(vg)
-    nvgCircle(vg, sx, sy, r * 0.50)
-    nvgFillColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.75))
+    nvgMoveTo(vg, sx - shoulderW, shoulderY)
+    nvgLineTo(vg, sx - hemW, hemY)
+    nvgLineTo(vg, sx + hemW, hemY)
+    nvgLineTo(vg, sx + shoulderW, shoulderY)
+    nvgClosePath(vg)
+    nvgFillColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.55))
     nvgFill(vg)
-
-    -- 斗笠编织线（2条十字线）
-    nvgBeginPath(vg)
-    nvgMoveTo(vg, sx - r * 0.40, sy)
-    nvgLineTo(vg, sx + r * 0.40, sy)
-    nvgMoveTo(vg, sx, sy - r * 0.40)
-    nvgLineTo(vg, sx, sy + r * 0.40)
-    nvgStrokeWidth(vg, 0.8)
-    nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.30))
+    -- 袍服描边
+    nvgStrokeWidth(vg, 1.5)
+    nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.40))
     nvgStroke(vg)
 
-    -- 斗笠帽檐描边（呼吸脉动）
-    local breathe = 1.0 + math.sin(t * 2) * 0.03
+    -- 中缝竖线（衣襟）
     nvgBeginPath(vg)
-    nvgCircle(vg, sx, sy, r * 0.55 * breathe)
-    nvgStrokeWidth(vg, 1.8)
-    nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.60))
-    nvgStroke(vg)
-
-    -- 外层淡墨晕圈
-    nvgBeginPath(vg)
-    nvgCircle(vg, sx, sy, r * 0.70)
+    nvgMoveTo(vg, sx + dirSign * r * 0.03, shoulderY + r * 0.03)
+    nvgLineTo(vg, sx + dirSign * r * 0.01, hemY - r * 0.02)
     nvgStrokeWidth(vg, 0.8)
     nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.25))
     nvgStroke(vg)
 
-    -- 顶点笠尖（浓墨实点）
+    -- 头部（圆形，比肩稍窄）
+    local headR = r * 0.18
+    local headY = shoulderY - headR * 0.8
     nvgBeginPath(vg)
-    nvgCircle(vg, sx, sy, r * 0.10)
-    nvgFillColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.90))
+    nvgCircle(vg, sx + dirSign * r * 0.02, headY, headR)
+    nvgFillColor(vg, nvgRGBAf(pw.r, pw.g, pw.b, 0.85))
+    nvgFill(vg)
+    nvgStrokeWidth(vg, 1.2)
+    nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.50))
+    nvgStroke(vg)
+
+    -- 斗笠（椭圆形帽，盖在头顶）
+    local hatY = headY - headR * 0.6
+    local hatW = r * 0.38
+    local hatH = r * 0.12
+    nvgBeginPath(vg)
+    nvgEllipse(vg, sx + dirSign * r * 0.02, hatY, hatW, hatH)
+    nvgFillColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.70))
+    nvgFill(vg)
+    nvgStrokeWidth(vg, 1.0)
+    nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.45))
+    nvgStroke(vg)
+    -- 笠尖
+    nvgBeginPath(vg)
+    nvgCircle(vg, sx + dirSign * r * 0.02, hatY - hatH * 0.3, r * 0.04)
+    nvgFillColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.85))
     nvgFill(vg)
 
-    -- 方向指示（朱砂箭头，加粗加长）
-    if facing then
-        local dirX = math.cos(-facing)
-        local dirY = math.sin(-facing)
-        local tipX = sx + dirX * r * 0.85
-        local tipY = sy + dirY * r * 0.85
-        local baseX = sx + dirX * r * 0.50
-        local baseY = sy + dirY * r * 0.50
+    -- 行走摆动的袖子（侧面时更明显）
+    if dirSign ~= 0 then
+        local swingAmt = math.sin(t * 5) * r * 0.06
+        -- 前臂
         nvgBeginPath(vg)
-        nvgMoveTo(vg, baseX, baseY)
-        nvgLineTo(vg, tipX, tipY)
-        nvgStrokeWidth(vg, 2.5)
-        nvgStrokeColor(vg, nvgRGBAf(cin.r, cin.g, cin.b, 0.65))
-        nvgStroke(vg)
-        local perpX = -dirY * r * 0.12
-        local perpY = dirX * r * 0.12
-        nvgBeginPath(vg)
-        nvgMoveTo(vg, tipX, tipY)
-        nvgLineTo(vg, tipX - dirX * r * 0.15 + perpX, tipY - dirY * r * 0.15 + perpY)
-        nvgMoveTo(vg, tipX, tipY)
-        nvgLineTo(vg, tipX - dirX * r * 0.15 - perpX, tipY - dirY * r * 0.15 - perpY)
+        nvgMoveTo(vg, sx + dirSign * shoulderW, shoulderY + r * 0.03)
+        nvgQuadTo(vg,
+            sx + dirSign * (shoulderW + r * 0.12), shoulderY + r * 0.15 + swingAmt,
+            sx + dirSign * (shoulderW + r * 0.06), shoulderY + r * 0.28)
         nvgStrokeWidth(vg, 2.0)
-        nvgStrokeColor(vg, nvgRGBAf(cin.r, cin.g, cin.b, 0.60))
+        nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.45))
         nvgStroke(vg)
+    end
+
+    -- 方向指示（朱砂小三角在脚前方）
+    if facing then
+        local dirX = math.cos(facing)
+        local dirY = math.sin(facing)
+        local triDist = r * 0.65
+        local triX = sx + dirX * triDist
+        local triY = sy + r * 0.35 + dirY * triDist * 0.3
+        local triR = r * 0.08
+        nvgBeginPath(vg)
+        nvgMoveTo(vg, triX + dirX * triR * 2, triY + dirY * triR * 2)
+        nvgLineTo(vg, triX - dirY * triR, triY + dirX * triR)
+        nvgLineTo(vg, triX + dirY * triR, triY - dirX * triR)
+        nvgClosePath(vg)
+        nvgFillColor(vg, nvgRGBAf(cin.r, cin.g, cin.b, 0.50))
+        nvgFill(vg)
     end
 
     nvgRestore(vg)
