@@ -20,6 +20,10 @@ function SuppressOverlay.new(params)
     self.shakeTimer = 0
     self.logW = 300
     self.logH = 500
+    -- 输入保护：进入时的触摸释放事件不应触发 QTE 判定
+    -- 因为 ExploreScreen 在 down 事件中 push 本覆盖层，
+    -- 后续的 up/tap 会被传递到这里导致 charge 模式立即释放失败
+    self.inputGuard = true
     return self
 end
 
@@ -49,6 +53,16 @@ end
 ------------------------------------------------------------
 function SuppressOverlay:onInput(action, sx, sy)
     if self.result then return true end
+
+    -- 输入保护：吞掉进入时残留的 up/tap，等待第一次全新的 down
+    if self.inputGuard then
+        if action == "down" then
+            self.inputGuard = false  -- 收到全新 down，保护解除
+        else
+            return true  -- 吞掉残留的 up/tap/move
+        end
+    end
+
     local s = SuppressSystem.state
 
     if s.mode == "charge" then

@@ -11,18 +11,18 @@ local PrepareScreen = {}
 PrepareScreen.__index = PrepareScreen
 
 local BIOMES = {
-    { id = "翠谷灵境", beasts = "当康·狸力·旋龟·何罗鱼·帝江 / 乘黄·文鳐鱼·混沌·九尾狐 / 麒麟·白泽", trait = "竹林最多，隐蔽战术", unlockLevel = 1 },
-    { id = "雷峰灵境", beasts = "化蛇·并封·蜚·狸力 / 毕方·穷奇·九婴 / 应龙·白虎", trait = "无水面，瘴气偏高", unlockLevel = 2 },
-    { id = "焰渊灵境", beasts = "当康·化蛇·蜚 / 饕餮·九尾狐·毕方 / 凤凰·烛龙", trait = "天晶×1.5，瘴气加倍", unlockLevel = 2 },
-    { id = "幽潭灵境", beasts = "旋龟·何罗鱼·并封·帝江 / 猰貐·九婴·混沌 / 烛龙·白泽", trait = "水面最多，雾气浓重", unlockLevel = 3 },
-    { id = "虚空灵境", beasts = "全部24种", trait = "收缩×1.2，SSR+5%", unlockLevel = 5 },
+    { id = "翠谷灵境", beasts = "兆兽五、异兽四、神灵二，多温驯之属，土水之气盛", trait = "竹林最多，隐蔽战术", unlockLevel = 1 },
+    { id = "雷峰灵境", beasts = "兆兽四、异兽三、神灵二，多凶悍之属，雷风之气烈", trait = "无水面，瘴气偏高", unlockLevel = 2 },
+    { id = "焰渊灵境", beasts = "兆兽三、异兽三、神灵二，多伏击之属，炎暗之气重", trait = "天晶×1.5，瘴气加倍", unlockLevel = 2 },
+    { id = "幽潭灵境", beasts = "兆兽四、异兽三、神灵二，多领地之属，水暗之气深", trait = "水面最多，雾气浓重", unlockLevel = 3 },
+    { id = "虚空灵境", beasts = "万兽齐聚，六灵十异八兆，凡二十四种尽出", trait = "收缩×1.2，SSR+5%", unlockLevel = 5 },
 }
 
 local SCHOOLS = {
-    { id = "trace",    name = "追迹流", desc = "快速收集线索触发SSR", color = nil },
-    { id = "suppress", name = "压制流", desc = "强化QTE表现",        color = nil },
-    { id = "evac",     name = "撤离流", desc = "强化撤离安全性",     color = nil },
-    { id = "greed",    name = "贪渊流", desc = "高危区高收益",        color = nil, unlockLevel = 4 },
+    { id = "trace",    name = "追迹流", desc = "循迹辨踪，感通灵脉，神兽踪迹无所遁形", color = nil },
+    { id = "suppress", name = "压制流", desc = "以力镇之，封印术法精进，压制之术大成", color = nil },
+    { id = "evac",     name = "撤离流", desc = "明哲保身，趋吉避凶，全身而退方为上策", color = nil },
+    { id = "greed",    name = "贪渊流", desc = "涉险探渊，以身犯难，险中求得奇珍异宝", color = nil, unlockLevel = 4 },
 }
 
 local ITEMS = {
@@ -167,10 +167,11 @@ function PrepareScreen:renderBiomeSelect(vg, logW, logH, alpha)
         nvgFillColor(vg, nvgRGBAf(P.inkMedium.r, P.inkMedium.g, P.inkMedium.b, textAlpha * 0.7 * alpha))
         nvgText(vg, (logW - cardW) * 0.5 + 14, cy + cardH * 0.6, biome.beasts)
 
-        -- 特色
+        -- 特色（右上角，与灵境名同行）
         nvgTextAlign(vg, NVG_ALIGN_RIGHT + NVG_ALIGN_MIDDLE)
+        nvgFontSize(vg, 11)
         nvgFillColor(vg, nvgRGBAf(P.jade.r, P.jade.g, P.jade.b, textAlpha * 0.6 * alpha))
-        nvgText(vg, (logW + cardW) * 0.5 - 14, cy + cardH * 0.6, biome.trait)
+        nvgText(vg, (logW + cardW) * 0.5 - 14, cy + cardH * 0.3, biome.trait)
 
         if unlocked then
             table.insert(self.buttons, {

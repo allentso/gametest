@@ -14,6 +14,8 @@ function CraftScreen.new(params)
     self.t = 0
     self.buttons = {}
     self.craftAnim = nil  -- { recipeId, timer }
+    self.scrollY = 0
+    self.contentH = 0
     return self
 end
 
@@ -92,16 +94,25 @@ function CraftScreen:render(vg, logW, logH, t)
         soulCharm = "归魂符", beastEye = "兽瞳", sealEcho = "封印回响",
     }
 
-    -- 合成卡片
+    -- 合成卡片（可滚动区域）
     self.buttons = {}
     local cardW = logW * 0.85
     local cardH = logH * 0.09
     local cardX = (logW - cardW) * 0.5
     local startY = logH * 0.20
     local cardGap = 6
+    local scrollY = self.scrollY or 0
+
+    local clipTop = startY
+    local clipBottom = logH
+    local clipH = clipBottom - clipTop
+    nvgSave(vg)
+    nvgScissor(vg, 0, clipTop, logW, clipH)
+
+    self.contentH = #CraftSystem.recipes * (cardH + cardGap) - cardGap
 
     for i, recipe in ipairs(CraftSystem.recipes) do
-        local cy = startY + (i - 1) * (cardH + cardGap)
+        local cy = startY + (i - 1) * (cardH + cardGap) + scrollY
         local canCraft = CraftSystem.canCraft(recipe.id, GameState.data)
 
         -- 合成动画辉光
@@ -183,11 +194,22 @@ function CraftScreen:render(vg, logW, logH, t)
         })
     end
 
+    nvgResetScissor(vg)
+    nvgRestore(vg)
+
     -- 返回按钮区域
     table.insert(self.buttons, { type = "back", x = 0, y = logH * 0.02, w = 80, h = 30 })
 end
 
 function CraftScreen:onInput(action, sx, sy)
+    if action == "drag_y" then
+        local logH = graphics:GetHeight() / graphics:GetDPR()
+        local clipH = logH - logH * 0.20
+        local maxScroll = math.max(0, self.contentH - clipH)
+        self.scrollY = math.max(-maxScroll, math.min(0, self.scrollY + sy))
+        return true
+    end
+
     if action ~= "tap" then return false end
 
     for _, btn in ipairs(self.buttons) do
