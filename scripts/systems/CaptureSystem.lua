@@ -1,9 +1,45 @@
---- 捕获判定 - 5级封灵器 + 偷袭加成 + 手动选择
+--- 捕获判定 - 5级封灵器 + 偷袭加成 + 手动选择 + 变体掷骰
 local EventBus = require("systems.EventBus")
 local PitySystem = require("systems.PitySystem")
 local SessionState = require("systems.SessionState")
 
 local CaptureSystem = {}
+
+------------------------------------------------------------
+-- 变体系统：普通 / 异文 / 玄采 / 玄采异文
+------------------------------------------------------------
+CaptureSystem.VARIANT = {
+    NORMAL        = "normal",
+    YIWEN         = "yiwen",
+    XUANCAI       = "xuancai",
+    XUANCAI_YIWEN = "xuancai_yiwen",
+}
+
+CaptureSystem.VARIANT_NAMES = {
+    normal        = "普通",
+    yiwen         = "异文",
+    xuancai       = "玄采",
+    xuancai_yiwen = "玄采异文",
+}
+
+CaptureSystem.VARIANT_RATES = {
+    normal        = 0.80,
+    yiwen         = 0.12,
+    xuancai       = 0.06,
+    xuancai_yiwen = 0.02,
+}
+
+function CaptureSystem.rollVariant()
+    local roll = math.random()
+    local cumulative = 0
+    for _, key in ipairs({"xuancai_yiwen", "xuancai", "yiwen", "normal"}) do
+        cumulative = cumulative + CaptureSystem.VARIANT_RATES[key]
+        if roll < cumulative then
+            return key
+        end
+    end
+    return "normal"
+end
 
 CaptureSystem.SEALER_RATES = {
     T1 = 0.75,
@@ -57,11 +93,14 @@ function CaptureSystem.attemptCapture(beast, sealerTier, inventory, sealerKey)
         -- 成功：消耗封灵器
         inventory[sealerKey] = inventory[sealerKey] - 1
 
+        local variant = CaptureSystem.rollVariant()
         local result = {
             beastId = beast.id,
             type = beast.type,
             name = beast.name,
             quality = beast.quality,
+            variant = variant,
+            variantName = CaptureSystem.VARIANT_NAMES[variant],
             stable = false,
             biome = SessionState.selectedBiome,
         }

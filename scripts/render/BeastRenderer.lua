@@ -80,6 +80,12 @@ function BeastRenderer.draw(vg, beast, sx, sy, ppu, t)
         BeastRenderer.drawDefaultShape(vg, sx, sy, r, t, beast)
     end
 
+    -- 变体视觉叠加
+    local variant = beast.variant or "normal"
+    if variant ~= "normal" then
+        BeastRenderer.drawVariantEffect(vg, beast, sx, sy, r, t, variant)
+    end
+
     if beast.aiState == "alert" then
         BeastRenderer.drawAlertMark(vg, sx, sy, r, t)
     elseif beast.aiState == "warn" then
@@ -1392,6 +1398,81 @@ BeastRenderer.shapes["024"] = function(vg, sx, sy, r, t, beast)
     -- 毒气晕
     local toxPulse = 0.08 + math.sin(t * 2) * 0.04
     BrushStrokes.inkWash(vg, sx, sy, r * 0.2, r * 0.8, poison, toxPulse)
+    nvgRestore(vg)
+end
+
+------------------------------------------------------------
+-- 变体视觉效果
+------------------------------------------------------------
+
+function BeastRenderer.drawVariantEffect(vg, beast, sx, sy, r, t, variant)
+    local P = InkPalette
+    local hasYiwen   = (variant == "yiwen" or variant == "xuancai_yiwen")
+    local hasXuancai = (variant == "xuancai" or variant == "xuancai_yiwen")
+
+    if hasYiwen then
+        BeastRenderer.drawYiwenPattern(vg, sx, sy, r, t, beast)
+    end
+
+    if hasXuancai then
+        BeastRenderer.drawXuancaiAura(vg, sx, sy, r, t, beast)
+    end
+end
+
+--- 异文效果：体表附加旋转纹彩线条
+function BeastRenderer.drawYiwenPattern(vg, sx, sy, r, t, beast)
+    local P = InkPalette
+    local jade = P.jade
+    local stripes = 5
+    local angOff = t * 0.4
+    local rInner = r * 0.4
+    local rOuter = r * 0.85
+
+    nvgSave(vg)
+    for i = 1, stripes do
+        local ang = angOff + (i / stripes) * math.pi * 2
+        local x1 = sx + math.cos(ang) * rInner
+        local y1 = sy + math.sin(ang) * rInner
+        local x2 = sx + math.cos(ang + 0.3) * rOuter
+        local y2 = sy + math.sin(ang + 0.3) * rOuter
+
+        local cxCtrl = sx + math.cos(ang + 0.15) * r * 0.65
+        local cyCtrl = sy + math.sin(ang + 0.15) * r * 0.65
+
+        nvgBeginPath(vg)
+        nvgMoveTo(vg, x1, y1)
+        nvgQuadTo(vg, cxCtrl, cyCtrl, x2, y2)
+        nvgStrokeWidth(vg, 1.2)
+        local pulse = 0.30 + math.sin(t * 2 + i) * 0.10
+        nvgStrokeColor(vg, nvgRGBAf(jade.r, jade.g, jade.b, pulse))
+        nvgStroke(vg)
+    end
+    nvgRestore(vg)
+end
+
+--- 玄采效果：外层神秘光晕 + 微粒旋转
+function BeastRenderer.drawXuancaiAura(vg, sx, sy, r, t, beast)
+    local P = InkPalette
+    local indigo = P.indigo
+    local auraPulse = 0.12 + math.sin(t * 1.3) * 0.06
+    local auraR = r * 1.25 + math.sin(t * 0.7) * r * 0.1
+
+    BrushStrokes.inkWash(vg, sx, sy, r * 0.6, auraR, indigo, auraPulse)
+
+    nvgSave(vg)
+    local particles = 8
+    for i = 1, particles do
+        local ang = t * 0.6 + (i / particles) * math.pi * 2
+        local dist = r * 1.1 + math.sin(t * 2.5 + i * 1.7) * r * 0.15
+        local px = sx + math.cos(ang) * dist
+        local py = sy + math.sin(ang) * dist
+        local dotR = 1.5 + math.sin(t * 3 + i) * 0.5
+        local dotA = 0.35 + math.sin(t * 2 + i * 0.9) * 0.15
+        nvgBeginPath(vg)
+        nvgCircle(vg, px, py, dotR)
+        nvgFillColor(vg, nvgRGBAf(indigo.r, indigo.g, indigo.b, dotA))
+        nvgFill(vg)
+    end
     nvgRestore(vg)
 end
 

@@ -258,13 +258,13 @@ function ExploreScreen:onEnter()
         self.visionShrinkTimer = data.duration or 5.0
     end, self)
 
-    -- 流派追迹大成：SSR线索需求-1 + 闪光概率+10%
+    -- 流派追迹大成：SSR线索需求-1 + 玄采概率+10%
     local effect = getSchoolEffect()
     if effect and effect.ssrReduce then
         TrackingSystem.ssrReduceBonus = effect.ssrReduce
     end
-    if effect and effect.flashBonus then
-        TrackingSystem.schoolFlashBonus = effect.flashBonus
+    if effect and effect.xuancaiBonus then
+        TrackingSystem.schoolXuancaiBonus = effect.xuancaiBonus
     end
 
     -- 流派重试标记（压制大成可重试1次）

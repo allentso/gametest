@@ -1,8 +1,9 @@
 --- CaptureOverlay - 捕获演出（4.5秒电影级揭示动画）
---- 4阶段: 墨染扩散→金光乍现→符文浮现→品质揭晓
+--- 4阶段: 墨染扩散→金光乍现→符文浮现→品质+变体揭晓
 local InkPalette = require("data.InkPalette")
 local ScreenManager = require("systems.ScreenManager")
 local BrushStrokes = require("render.BrushStrokes")
+local CaptureSystem = require("systems.CaptureSystem")
 
 local CaptureOverlay = {}
 CaptureOverlay.__index = CaptureOverlay
@@ -22,6 +23,8 @@ function CaptureOverlay.new(params)
     self.contract = params.contract
     self.elapsed = 0
     self.quality = params.beast.quality or "R"
+    self.variant = params.contract and params.contract.variant or "normal"
+    self.variantName = CaptureSystem.VARIANT_NAMES[self.variant] or "普通"
     return self
 end
 
@@ -145,7 +148,7 @@ function CaptureOverlay:render(vg, logW, logH, t)
         end
     end
 
-    -- Phase 4: 品质揭晓 (2.8 ~ 4.5s)
+    -- Phase 4: 品质+变体揭晓 (2.8 ~ 4.5s)
     if e >= PHASE_REVEAL.s then
         local p = math.min(1, (e - PHASE_REVEAL.s) / 1.0)
 
@@ -161,12 +164,27 @@ function CaptureOverlay:render(vg, logW, logH, t)
         nvgFillColor(vg, nvgRGBAf(qualColor.r, qualColor.g, qualColor.b, p * 0.9))
         nvgText(vg, cx, cy + 80, self.quality)
 
+        -- 变体标签（非普通时显示）
+        if self.variant ~= "normal" and p > 0.3 then
+            local vAlpha = math.min(1, (p - 0.3) / 0.5)
+            local varColors = {
+                yiwen         = P.jade,
+                xuancai       = P.indigo,
+                xuancai_yiwen = P.gold,
+            }
+            local vc = varColors[self.variant] or P.inkMedium
+            nvgFontSize(vg, 15)
+            nvgFillColor(vg, nvgRGBAf(vc.r, vc.g, vc.b, vAlpha * 0.9))
+            nvgText(vg, cx, cy + 102, "· " .. self.variantName .. " ·")
+        end
+
         -- SSR 独有描述
         if self.quality == "SSR" and p > 0.5 then
             local descAlpha = (p - 0.5) / 0.5
+            local descY = self.variant ~= "normal" and (cy + 124) or (cy + 105)
             nvgFontSize(vg, 14)
             nvgFillColor(vg, nvgRGBAf(P.gold.r, P.gold.g, P.gold.b, descAlpha * 0.7))
-            nvgText(vg, cx, cy + 105, "天命之契·不朽灵印")
+            nvgText(vg, cx, descY, "天命之契·不朽灵印")
         end
     end
 end

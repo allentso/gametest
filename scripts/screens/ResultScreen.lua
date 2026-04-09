@@ -6,6 +6,7 @@ local ScreenManager = require("systems.ScreenManager")
 local BrushStrokes = require("render.BrushStrokes")
 local InkRenderer = require("render.InkRenderer")
 local LoreData = require("data.LoreData")
+local CaptureSystem = require("systems.CaptureSystem")
 
 local ResultScreen = {}
 ResultScreen.__index = ResultScreen
@@ -260,6 +261,20 @@ function ResultScreen:renderContent(vg, sx, sy, sw, sh, t)
                 -- 名字
                 nvgFillColor(vg, nvgRGBAf(P.inkStrong.r, P.inkStrong.g, P.inkStrong.b, alpha * 0.8))
                 nvgText(vg, sx + 75, curY, contract.name)
+
+                -- 变体标签（非普通时显示）
+                local vName = contract.variant and CaptureSystem.VARIANT_NAMES[contract.variant]
+                if vName and contract.variant ~= "normal" then
+                    local varColors = {
+                        yiwen         = P.jade,
+                        xuancai       = P.indigo,
+                        xuancai_yiwen = P.gold,
+                    }
+                    local vc = varColors[contract.variant] or P.inkMedium
+                    nvgFontSize(vg, 11)
+                    nvgFillColor(vg, nvgRGBAf(vc.r, vc.g, vc.b, alpha * 0.8))
+                    nvgText(vg, sx + sw - 75, curY + 1, vName)
+                end
 
                 -- SSR 墨点装饰
                 if contract.quality == "SSR" then

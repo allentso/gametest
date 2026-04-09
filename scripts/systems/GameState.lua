@@ -116,8 +116,8 @@ function GameState.spendResource(resType, amount)
     return true
 end
 
---- 记录图鉴
-function GameState.recordBeast(beastId, quality)
+--- 记录图鉴（v3.0: 品质固定，记录变体）
+function GameState.recordBeast(beastId, quality, variant)
     if not beastId then
         print("[GameState] recordBeast: beastId is nil, skipping")
         return
@@ -129,24 +129,30 @@ function GameState.recordBeast(beastId, quality)
             count = 0,
             bestQuality = "",
             qualities = { R = 0, SR = 0, SSR = 0 },
+            variants = { normal = 0, yiwen = 0, xuancai = 0, xuancai_yiwen = 0 },
         }
     end
     local entry = GameState.data.bestiary[beastId]
     entry.discovered = true
     entry.captured = true
     entry.count = entry.count + 1
-    -- 兼容旧存档：补充 qualities 字段
+    -- 兼容旧存档
     if not entry.qualities then
         entry.qualities = { R = 0, SR = 0, SSR = 0 }
     end
-    -- 分品质计数
+    if not entry.variants then
+        entry.variants = { normal = 0, yiwen = 0, xuancai = 0, xuancai_yiwen = 0 }
+    end
+    -- 品质计数（兼容旧逻辑）
     local q = quality or "R"
     entry.qualities[q] = (entry.qualities[q] or 0) + 1
-    -- 更新最佳品质
     local qualRank = { R = 1, SR = 2, SSR = 3 }
     if (qualRank[quality] or 0) > (qualRank[entry.bestQuality] or 0) then
         entry.bestQuality = quality
     end
+    -- 变体计数
+    local v = variant or "normal"
+    entry.variants[v] = (entry.variants[v] or 0) + 1
 end
 
 --- 图鉴收录数
@@ -216,7 +222,7 @@ function GameState.settleSession(sessionContracts, sessionResources, lostContrac
 
     -- 合入成功灵契
     for _, contract in ipairs(sessionContracts or {}) do
-        GameState.recordBeast(contract.beastId, contract.quality)
+        GameState.recordBeast(contract.beastId, contract.quality, contract.variant)
         GameState.data.totalCaptures = GameState.data.totalCaptures + 1
     end
 

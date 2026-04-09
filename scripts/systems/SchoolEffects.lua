@@ -15,7 +15,7 @@ SchoolEffects.EFFECTS = {
         { name = "精通·追迹", desc = "调查速度+25%，线索可见+1，投掷射程+2",
             clueSpeedMul = 1.25, clueVision = 1, throwRangeBonus = 2 },
         { name = "大成·追迹", desc = "调查速度+40%，SSR线索-1，追迹弹命中+15%封灵率",
-            clueSpeedMul = 1.40, clueVision = 1, ssrReduce = 1, flashBonus = 0.10, beastEyeDuration = 30,
+            clueSpeedMul = 1.40, clueVision = 1, ssrReduce = 1, xuancaiBonus = 0.10, beastEyeDuration = 30,
             throwRangeBonus = 2, traceHitSealBonus = 0.15, traceHitSealDuration = 10 },
     },
     suppress = {

@@ -1,4 +1,4 @@
---- 追踪系统 - 3线索→SR / 5线索+闪光判定→SSR
+--- 追踪系统 - 3线索→SR / 5线索+玄采判定→SSR
 local EventBus = require("systems.EventBus")
 local PitySystem = require("systems.PitySystem")
 
@@ -22,9 +22,9 @@ function TrackingSystem.reset()
     TrackingSystem.clues = {}
     TrackingSystem.srTriggered = false
     TrackingSystem.ssrTriggered = false
-    TrackingSystem.extraFlashBonus = 0
+    TrackingSystem.extraXuancaiBonus = 0
     TrackingSystem.ssrReduceBonus = 0
-    TrackingSystem.schoolFlashBonus = 0
+    TrackingSystem.schoolXuancaiBonus = 0
     TrackingSystem.investigatedTypes = {}
     TrackingSystem.habitDeduced = false
 end
@@ -61,11 +61,11 @@ function TrackingSystem.investigate(clue, consumeTraceAsh)
         EventBus.emit("beast_spawn_request", "SR")
     end
 
-    -- 5线索 → 闪光判定（追迹大成可减少所需线索数）
+    -- 5线索 → 玄采判定（追迹大成可减少所需线索数）
     local ssrThreshold = 5 - (TrackingSystem.ssrReduceBonus or 0)
     if TrackingSystem.clueCount >= ssrThreshold and not TrackingSystem.ssrTriggered then
         TrackingSystem.ssrTriggered = true
-        if TrackingSystem.rollFlash(false, false) then
+        if TrackingSystem.rollXuancai(false, false) then
             EventBus.emit("beast_spawn_request", "SSR")
         else
             EventBus.emit("beast_spawn_request", "SR")
@@ -74,12 +74,12 @@ function TrackingSystem.investigate(clue, consumeTraceAsh)
 
     -- 8+线索 → 额外SSR概率（每多1条+3%本局累积）
     if TrackingSystem.clueCount > 8 then
-        TrackingSystem.extraFlashBonus = (TrackingSystem.clueCount - 8) * 0.03
+        TrackingSystem.extraXuancaiBonus = (TrackingSystem.clueCount - 8) * 0.03
     end
 end
 
---- 闪光判定: 基础15% + 线索加成 + 封灵器加成 + 保底加成 + 流派加成
-function TrackingSystem.rollFlash(hasT4, hasT5)
+--- 玄采判定: 基础15% + 线索加成 + 封灵器加成 + 保底加成 + 流派加成
+function TrackingSystem.rollXuancai(hasT4, hasT5)
     local base = 0.15
     local extraClues = math.max(0, TrackingSystem.clueCount - 5)
     local clueBonus = extraClues * 0.05
@@ -87,10 +87,10 @@ function TrackingSystem.rollFlash(hasT4, hasT5)
     if hasT5 then sealerBonus = 0.20
     elseif hasT4 then sealerBonus = 0.10
     end
-    local pityBonus = PitySystem.getSSRFlashBonus()
-    local extraBonus = TrackingSystem.extraFlashBonus or 0
-    -- 追迹流大成：闪光概率+10%
-    local schoolBonus = TrackingSystem.schoolFlashBonus or 0
+    local pityBonus = PitySystem.getSSRXuancaiBonus()
+    local extraBonus = TrackingSystem.extraXuancaiBonus or 0
+    -- 追迹流大成：玄采概率+10%
+    local schoolBonus = TrackingSystem.schoolXuancaiBonus or 0
     local totalChance = base + clueBonus + sealerBonus + pityBonus + extraBonus + schoolBonus
     return math.random() < totalChance
 end

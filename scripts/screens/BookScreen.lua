@@ -1,4 +1,4 @@
---- 灵兽图鉴屏 - v2: 品质分层展示
+--- 灵兽图鉴屏 - v3: 变体收集展示
 local InkPalette = require("data.InkPalette")
 local BrushStrokes = require("render.BrushStrokes")
 local ScreenManager = require("systems.ScreenManager")
@@ -20,11 +20,12 @@ local ELEM_COLORS = {
     ["冰"] = { r = 0.50, g = 0.72, b = 0.80 },
 }
 
--- 品质标签配置
-local QUAL_LABELS = {
-    { key = "R",   label = "普通" },
-    { key = "SR",  label = "异色" },
-    { key = "SSR", label = "闪光" },
+-- 变体标签配置
+local VARIANT_LABELS = {
+    { key = "normal",        label = "普通" },
+    { key = "yiwen",         label = "异文" },
+    { key = "xuancai",       label = "玄采" },
+    { key = "xuancai_yiwen", label = "玄采异文" },
 }
 
 function BookScreen.new(params)
@@ -89,18 +90,18 @@ function BookScreen:render(vg, logW, logH, t)
     nvgText(vg, 16, logH * 0.05, "< 返回")
     self.backBtn = { x = 0, y = logH * 0.02, w = 80, h = 30 }
 
-    -- 收录进度：统计已收录灵兽数 + 总品质收集数
+    -- 收录进度：统计已收录灵兽数 + 变体收集数
     local collectedBeasts = GameState.getBestiaryCount()
     local totalBeasts = #BeastData
-    local totalQualities = 0
-    local collectedQualities = 0
+    local totalVariants = 0
+    local collectedVariants = 0
     for _, beast in ipairs(BeastData) do
-        totalQualities = totalQualities + 3  -- R/SR/SSR
+        totalVariants = totalVariants + #VARIANT_LABELS
         local entry = GameState.data.bestiary[beast.id]
-        if entry and entry.qualities then
-            for _, q in ipairs(QUAL_LABELS) do
-                if (entry.qualities[q.key] or 0) > 0 then
-                    collectedQualities = collectedQualities + 1
+        if entry and entry.variants then
+            for _, v in ipairs(VARIANT_LABELS) do
+                if (entry.variants[v.key] or 0) > 0 then
+                    collectedVariants = collectedVariants + 1
                 end
             end
         end
@@ -112,13 +113,13 @@ function BookScreen:render(vg, logW, logH, t)
     nvgText(vg, logW - 16, logH * 0.05,
         string.format("收录 %d/%d", collectedBeasts, totalBeasts))
 
-    -- 品质进度条（标题下方）
+    -- 变体进度条（标题下方）
     local progY = logH * 0.075
     nvgFontSize(vg, 10)
     nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
     nvgFillColor(vg, nvgRGBAf(P.inkLight.r, P.inkLight.g, P.inkLight.b, 0.45 * alpha))
     nvgText(vg, logW * 0.5, progY,
-        string.format("品质完成度 %d/%d", collectedQualities, totalQualities))
+        string.format("变体收集 %d/%d", collectedVariants, totalVariants))
 
     -- 分隔线
     BrushStrokes.inkLine(vg, logW * 0.1, logH * 0.09, logW * 0.9, logH * 0.09,
@@ -225,12 +226,13 @@ end
 function BookScreen:renderCard(vg, x, y, w, h, beast, entry, state, alpha, t)
     local P = InkPalette
 
-    -- 判断是否三品质全集
+    -- 判断是否四变体全集
     local allCollected = false
-    if entry and entry.qualities then
-        allCollected = (entry.qualities.R or 0) > 0
-            and (entry.qualities.SR or 0) > 0
-            and (entry.qualities.SSR or 0) > 0
+    if entry and entry.variants then
+        allCollected = (entry.variants.normal or 0) > 0
+            and (entry.variants.yiwen or 0) > 0
+            and (entry.variants.xuancai or 0) > 0
+            and (entry.variants.xuancai_yiwen or 0) > 0
     end
 
     -- 卡片底色
@@ -360,72 +362,59 @@ function BookScreen:renderCard(vg, x, y, w, h, beast, entry, state, alpha, t)
     nvgStrokeColor(vg, nvgRGBAf(P.inkWash.r, P.inkWash.g, P.inkWash.b, 0.30 * alpha))
     nvgStroke(vg)
 
-    -- 第三行：品质槽位 R / SR / SSR
+    -- 第三行：变体槽位（普通 / 异文 / 玄采 / 玄采异文）
     local row3Y = y + h * 0.73
-    local slotW = (w - 36) / 3
-    local qualities = entry.qualities or { R = 0, SR = 0, SSR = 0 }
+    local variants = (entry and entry.variants) or { normal = 0, yiwen = 0, xuancai = 0, xuancai_yiwen = 0 }
+    local varColors = {
+        normal        = P.inkMedium,
+        yiwen         = P.jade,
+        xuancai       = P.indigo,
+        xuancai_yiwen = P.gold,
+    }
+    local slotW = (w - 36) / #VARIANT_LABELS
 
-    for qi, qInfo in ipairs(QUAL_LABELS) do
-        local slotX = x + 12 + (qi - 1) * (slotW + 6)
+    for vi, vInfo in ipairs(VARIANT_LABELS) do
+        local slotX = x + 12 + (vi - 1) * (slotW + 2)
         local slotCX = slotX + slotW * 0.5
-        local qCount = qualities[qInfo.key] or 0
-        local qColor = P.qualColor(qInfo.key)
-        local hasThis = qCount > 0
+        local vCount = variants[vInfo.key] or 0
+        local vColor = varColors[vInfo.key] or P.inkMedium
+        local hasThis = vCount > 0
 
-        -- 品质墨点
-        local dotR = 5
+        local dotR = 4
         if hasThis then
-            -- 实心墨点（已获得）
-            BrushStrokes.inkDotStable(vg, slotCX - 20, row3Y, dotR,
-                qColor, 0.75 * alpha, qi * 31 + 7)
+            BrushStrokes.inkDotStable(vg, slotCX, row3Y - 4, dotR,
+                vColor, 0.75 * alpha, vi * 31 + 7)
         else
-            -- 空心圆（未获得）
             nvgBeginPath(vg)
-            nvgCircle(vg, slotCX - 20, row3Y, dotR)
+            nvgCircle(vg, slotCX, row3Y - 4, dotR)
             nvgStrokeWidth(vg, 0.8)
             nvgStrokeColor(vg, nvgRGBAf(P.inkWash.r, P.inkWash.g, P.inkWash.b, 0.35 * alpha))
             nvgStroke(vg)
         end
 
-        -- 品质名称
-        nvgFontSize(vg, 11)
-        nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_MIDDLE)
-        if hasThis then
-            nvgFillColor(vg, nvgRGBAf(qColor.r, qColor.g, qColor.b, 0.75 * alpha))
-        else
-            nvgFillColor(vg, nvgRGBAf(P.inkWash.r, P.inkWash.g, P.inkWash.b, 0.40 * alpha))
-        end
-        nvgText(vg, slotCX - 12, row3Y, qInfo.key)
-
-        -- 捕获次数
-        nvgFontSize(vg, 10)
-        nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_MIDDLE)
-        if hasThis then
-            nvgFillColor(vg, nvgRGBAf(P.inkMedium.r, P.inkMedium.g, P.inkMedium.b, 0.55 * alpha))
-            nvgText(vg, slotCX + 10, row3Y, string.format("×%d", qCount))
-        else
-            nvgFillColor(vg, nvgRGBAf(P.inkWash.r, P.inkWash.g, P.inkWash.b, 0.30 * alpha))
-            nvgText(vg, slotCX + 10, row3Y, "×0")
-        end
-
-        -- 品质中文标签（在次数下方）
         nvgFontSize(vg, 9)
         nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
         if hasThis then
-            nvgFillColor(vg, nvgRGBAf(P.inkLight.r, P.inkLight.g, P.inkLight.b, 0.40 * alpha))
+            nvgFillColor(vg, nvgRGBAf(vColor.r, vColor.g, vColor.b, 0.70 * alpha))
         else
-            nvgFillColor(vg, nvgRGBAf(P.inkWash.r, P.inkWash.g, P.inkWash.b, 0.25 * alpha))
+            nvgFillColor(vg, nvgRGBAf(P.inkWash.r, P.inkWash.g, P.inkWash.b, 0.35 * alpha))
         end
-        nvgText(vg, slotCX, row3Y + 14, qInfo.label)
+        nvgText(vg, slotCX, row3Y + 8, vInfo.label)
+
+        if hasThis then
+            nvgFontSize(vg, 8)
+            nvgFillColor(vg, nvgRGBAf(P.inkLight.r, P.inkLight.g, P.inkLight.b, 0.45 * alpha))
+            nvgText(vg, slotCX, row3Y + 18, string.format("×%d", vCount))
+        end
     end
 
-    -- 全品质集齐标记
+    -- 全变体集齐标记
     if allCollected then
         nvgFontSize(vg, 10)
         nvgTextAlign(vg, NVG_ALIGN_RIGHT + NVG_ALIGN_MIDDLE)
         nvgFillColor(vg, nvgRGBAf(P.gold.r, P.gold.g, P.gold.b,
             (0.65 + math.sin(t * 2) * 0.15) * alpha))
-        nvgText(vg, x + w - 12, row3Y, "全品质")
+        nvgText(vg, x + w - 12, row3Y, "全变体")
     end
 end
 

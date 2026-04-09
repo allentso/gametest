@@ -7,18 +7,18 @@ local PitySystem = {}
 PitySystem.ssrCount = 0
 PitySystem.srCount = 0
 
-local SSR_FLASH_BONUS = {
+local SSR_XUANCAI_BONUS = {
     { threshold = 15, bonus = 0.10 },
     { threshold = 25, bonus = 0.20 },
     { threshold = 35, bonus = 0.35 },
     { threshold = 40, bonus = 1.00 },
 }
 
-function PitySystem.getSSRFlashBonus()
+function PitySystem.getSSRXuancaiBonus()
     if PitySystem.ssrCount >= 40 then return 1.0 end
-    for i = #SSR_FLASH_BONUS, 1, -1 do
-        if PitySystem.ssrCount >= SSR_FLASH_BONUS[i].threshold then
-            return SSR_FLASH_BONUS[i].bonus
+    for i = #SSR_XUANCAI_BONUS, 1, -1 do
+        if PitySystem.ssrCount >= SSR_XUANCAI_BONUS[i].threshold then
+            return SSR_XUANCAI_BONUS[i].bonus
         end
     end
     return 0
