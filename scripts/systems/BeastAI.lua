@@ -28,6 +28,17 @@ BeastAI.STATE = {
 -- 品质额外感知加成（叠加到异兽自身 senseRange 上）
 BeastAI.QUALITY_SENSE_BONUS = { R = 0, SR = 1, SSR = 2 }
 
+-- 警告事件冷却（秒）：同一异兽在此间隔内只发射一次 beast_warn
+local WARN_COOLDOWN = 8.0
+
+--- 带冷却的警告事件发射
+local function emitWarnThrottled(beast)
+    local now = os.clock()
+    if (beast.lastWarnEmitTime or 0) + WARN_COOLDOWN > now then return end
+    beast.lastWarnEmitTime = now
+    EventBus.emit("beast_warn", { beast = beast })
+end
+
 ------------------------------------------------------------
 -- 获取实际战斗类型（考虑品质变体）
 ------------------------------------------------------------
@@ -313,7 +324,7 @@ function BeastAI.update(beast, dt, playerX, playerY, map, options)
             elseif cType == "territorial" then
                 beast.aiState = "warn"
                 beast.warnTimer = 0
-                EventBus.emit("beast_warn", { beast = beast })
+                emitWarnThrottled(beast)
             elseif cType == "aggressive" then
                 beast.aiState = "chase"
                 beast.chaseTimer = 0
@@ -631,7 +642,7 @@ function BeastAI.onSensed(beast, contactType, playerX, playerY, map)
         elseif contactType == "front" then
             beast.aiState = "warn"
             beast.warnTimer = 0
-            EventBus.emit("beast_warn", { beast = beast })
+            emitWarnThrottled(beast)
         elseif contactType == "side" then
             beast.aiState = "alert"
         end
