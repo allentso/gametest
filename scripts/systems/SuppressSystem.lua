@@ -1,6 +1,6 @@
 --- 压制系统 QTE - 10种异兽独立模式
---- timing(标准) fire(玄狐) dual(噬天) lightning(雷翼) glow(白泽)
---- strong(石灵) tidal(水蛟) soundwave(风鸣) charge(土偶) rhythm(冰蚕) flip(墨鸦)
+--- v3.0 QTE 模式映射（Phase 1 暂用已有模式）
+--- timing/fire/dual/lightning/glow/strong/tidal/soundwave/charge/rhythm/flip
 local EventBus = require("systems.EventBus")
 
 local SuppressSystem = {}
@@ -19,16 +19,33 @@ SuppressSystem.MODE_FLIP      = "flip"
 SuppressSystem.MODE_RAPID     = "rhythm"
 
 local BEAST_QTE_MAP = {
-    ["001"] = "fire",
-    ["002"] = "dual",
-    ["003"] = "lightning",
-    ["004"] = "glow",
-    ["005"] = "strong",
-    ["006"] = "tidal",
-    ["007"] = "soundwave",
-    ["008"] = "charge",
-    ["009"] = "rhythm",
-    ["010"] = "flip",
+    -- SSR · 六灵
+    ["001"] = "dual",       -- 烛龙：昼夜交替 → Phase 1 暂用 dual
+    ["002"] = "lightning",  -- 应龙：龙翼压制 → Phase 1 暂用 lightning
+    ["003"] = "rhythm",     -- 凤凰：五音节律 → Phase 1 暂用 rhythm
+    ["004"] = "glow",       -- 白泽：万象感应 → Phase 1 暂用 glow
+    ["005"] = "strong",     -- 白虎：金爪压制 → Phase 1 暂用 strong
+    ["006"] = "glow",       -- 麒麟：四灵共鸣 → Phase 1 暂用 glow
+    -- SR · 十异
+    ["007"] = "strong",     -- 饕餮：吞噬抵抗 → Phase 1 暂用 strong
+    ["008"] = "charge",     -- 穷奇：刺甲穿透 → Phase 1 暂用 charge
+    ["009"] = "strong",     -- 梼杌：顽石破碎 → Phase 1 暂用 strong
+    ["010"] = "rhythm",     -- 混沌：无面歌舞 → Phase 1 暂用 rhythm
+    ["011"] = "fire",       -- 九婴：九首轮番 → Phase 1 暂用 fire
+    ["012"] = "tidal",      -- 猰貐：蛇身压制 → Phase 1 暂用 tidal
+    ["013"] = "rhythm",     -- 毕方：单足节律 → Phase 1 暂用 rhythm
+    ["014"] = "flip",       -- 乘黄：驰骋 → Phase 1 暂用 flip
+    ["015"] = "flip",       -- 文鳐鱼：振翅飞越 → Phase 1 暂用 flip
+    ["016"] = "soundwave",  -- 九尾狐：幻化变身 → Phase 1 暂用 soundwave
+    -- R · 八兆
+    ["017"] = "timing",     -- 帝江：标准计时
+    ["018"] = "timing",     -- 当康：标准计时
+    ["019"] = "timing",     -- 狸力：标准计时
+    ["020"] = "charge",     -- 旋龟：蓄力点击
+    ["021"] = "dual",       -- 并封：双端计时
+    ["022"] = "timing",     -- 何罗鱼：连点
+    ["023"] = "soundwave",  -- 化蛇：声波捕捉
+    ["024"] = "charge",     -- 蜚：蓄力点击
 }
 
 SuppressSystem.state = {
@@ -92,7 +109,7 @@ function SuppressSystem.start(beast, hasMirrorSand)
     s.pointer  = 0
     s.direction = 1
 
-    s.mode = (quality == "R") and "timing" or (BEAST_QTE_MAP[id] or "timing")
+    s.mode = BEAST_QTE_MAP[id] or "timing"
 
     if isSSR then
         s.speed = 2.0; s.requiredHits = 2; s.targetZone = { 0.38, 0.62 }

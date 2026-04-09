@@ -1,6 +1,5 @@
---- 异兽 AI 状态机 + 朝向系统 + 个性行为
---- 白泽凝视、风鸣隐形、水蛟水面加速、雷翼高速冲刺窗口
---- 墨鸦墨迹、石灵石化防御、土偶不逃跑
+--- 异兽 AI 状态机 + 朝向系统 + 个性行为 — v3.0
+--- 白泽凝视、应龙高速冲刺、梼杌/穷奇CC免疫
 local CollisionSystem = require("systems.CollisionSystem")
 local Config = require("Config")
 local EventBus = require("systems.EventBus")
@@ -18,7 +17,6 @@ BeastAI.STATE = {
     CAPTURED   = "captured",
     PANIC      = "panic",
     GAZE       = "gaze",
-    PETRIFIED  = "petrified",
     BURST      = "burst",
     BURST_STOP = "burst_stop",
     -- 战斗新状态
@@ -41,76 +39,136 @@ function BeastAI.getCombatType(beast)
 end
 
 ------------------------------------------------------------
--- 攻击定义表
--- 每个攻击: { name, damage, range, warmup(预警), cooldown, effect, qualityMin }
+-- 攻击定义表（v3.0 · 24只异兽）
+-- 每个攻击: { name, damage, range, warmup, cooldown, effect, qualityMin }
 ------------------------------------------------------------
 BeastAI.ATTACK_DEFS = {
-    -- 001 玄狐
-    ["001"] = {
-        { name = "火尾横扫",   damage = 1, range = 2.5, warmup = 0.5, cooldown = 4.0, arc = 90 },
-        { name = "三尾刺",     damage = 2, range = 2.0, warmup = 0.0, cooldown = 0, qualityMin = "SSR",
-          effect = { debuff = "burn", duration = 1.0 } },
+    -- SSR · 六灵
+    ["001"] = { -- 烛龙 (territorial)
+        { name = "昼夜之瞳",   damage = 2, range = 4.0, warmup = 1.0, cooldown = 6.0,
+          aoeType = "circle", aoeRadius = 4.0,
+          effect = { visionShrink = 1.0, duration = 4.0 }, backstabAfter = 2.0 },
+        { name = "烛火之息",   damage = 1, range = 3.0, warmup = 0.5, cooldown = 4.0,
+          aoeType = "line", effect = { debuff = "burn", duration = 2.0 } },
     },
-    -- 002 噬天
-    ["002"] = {
-        { name = "暗影撞击",   damage = 2, range = 2.0, warmup = 0.3, cooldown = 5.0,
+    ["002"] = { -- 应龙 (aggressive)
+        { name = "风压横扫",   damage = 2, range = 3.0, warmup = 0.5, cooldown = 5.0,
+          arc = 120, effect = { knockback = 2.0 } },
+        { name = "雷霆怒吼",   damage = 3, range = 99, warmup = 0, cooldown = 0,
+          trigger = "chaseTime", triggerVal = 8,
+          aoeType = "circle", aoeRadius = 3.0, backstabAfter = 2.0 },
+    },
+    ["003"] = { -- 凤凰 (passive, rarely attacks)
+        { name = "涅槃焰翼",   damage = 1, range = 2.0, warmup = 0.3, cooldown = 8.0,
+          aoeType = "circle", aoeRadius = 2.0,
+          effect = { knockback = 1.5 } },
+    },
+    ["004"] = { -- 白泽 (passive, gaze)
+        { name = "知物之光",   damage = 0, range = 3.0, warmup = 0, cooldown = 10.0,
+          effect = { debuff = "reveal", duration = 5.0 } },
+    },
+    ["005"] = { -- 白虎 (aggressive)
+        { name = "肃杀扑击",   damage = 2, range = 2.0, warmup = 0.4, cooldown = 4.0,
+          arc = 90, effect = { knockback = 1.0 } },
+        { name = "金爪压制",   damage = 3, range = 1.0, warmup = 0.8, cooldown = 6.0,
+          backstabAfter = 1.5 },
+        { name = "虎啸",       damage = 1, range = 99, warmup = 0, cooldown = 0,
+          trigger = "chaseTime", triggerVal = 6,
+          aoeType = "circle", aoeRadius = 3.0 },
+    },
+    ["006"] = { -- 麒麟 (passive, minimal attack)
+        { name = "祥瑞护体",   damage = 0, range = 2.0, warmup = 0.3, cooldown = 12.0,
+          aoeType = "circle", aoeRadius = 2.0,
+          effect = { knockback = 2.0 } },
+    },
+    -- SR · 十异
+    ["007"] = { -- 饕餮 (aggressive)
+        { name = "虎齿啃咬",   damage = 2, range = 1.5, warmup = 0.3, cooldown = 3.5, arc = 60 },
+        { name = "无尽贪食",   damage = 3, range = 1.0, warmup = 0, cooldown = 0,
+          trigger = "chaseTime", triggerVal = 10, backstabAfter = 1.5 },
+    },
+    ["008"] = { -- 穷奇 (aggressive)
+        { name = "猬毛冲撞",   damage = 2, range = 2.5, warmup = 0.5, cooldown = 4.0,
+          aoeType = "line", effect = { knockback = 1.5 } },
+        { name = "嗥狗乱吠",   damage = 1, range = 99, warmup = 0, cooldown = 0,
+          trigger = "chaseTime", triggerVal = 8,
+          aoeType = "circle", aoeRadius = 3.0 },
+    },
+    ["009"] = { -- 梼杌 (territorial)
+        { name = "蛮力挥爪",   damage = 2, range = 2.0, warmup = 0.8, cooldown = 5.0,
+          arc = 120, backstabAfter = 1.0 },
+        { name = "狂暴冲撞",   damage = 2, range = 3.0, warmup = 1.2, cooldown = 7.0,
+          aoeType = "line", backstabAfter = 1.5 },
+    },
+    ["010"] = { -- 混沌 (passive)
+        { name = "歌舞旋风",   damage = 1, range = 2.0, warmup = 0.5, cooldown = 8.0,
+          aoeType = "circle", aoeRadius = 2.0,
           effect = { knockback = 1.0 } },
-        { name = "光吞噬",     damage = 1, range = 99, warmup = 0, cooldown = 0, qualityMin = "SR",
-          trigger = "chaseTime", triggerVal = 10,
-          effect = { visionShrink = 1.5, duration = 5.0 } },
-        { name = "深渊吞噬",   damage = 3, range = 1.0, warmup = 0, cooldown = 0, qualityMin = "SSR",
-          trigger = "chance", triggerVal = 0.3, backstabAfter = 1.5 },
     },
-    -- 003 雷翼
-    ["003"] = {
-        { name = "雷击俯冲",   damage = 1, range = 99, warmup = 0.7, cooldown = 4.0,
+    ["011"] = { -- 九婴 (aggressive)
+        { name = "水火交侵",   damage = 2, range = 3.0, warmup = 0.5, cooldown = 4.0,
           aoeType = "line" },
-        { name = "电弧连击",   damage = 1, range = 1.0, warmup = 0, cooldown = 0, qualityMin = "SR",
-          trigger = "onHit" },
-        { name = "雷暴核心",   damage = 2, range = 99, warmup = 3.0, cooldown = 0, qualityMin = "SSR",
-          trigger = "chaseTime", triggerVal = 8, backstabAfter = 1.5 },
+        { name = "九首齐鸣",   damage = 1, range = 99, warmup = 0, cooldown = 0,
+          trigger = "chaseTime", triggerVal = 8,
+          aoeType = "circle", aoeRadius = 3.5, backstabAfter = 2.0 },
+        { name = "头颈喷吐",   damage = 1, range = 2.0, warmup = 0, cooldown = 0,
+          trigger = "onHit", effect = { debuff = "burn", duration = 1.5 } },
     },
-    -- 005 石灵
-    ["005"] = {
-        { name = "飞石",       damage = 1, range = 5.0, warmup = 0.4, cooldown = 4.0,
-          aoeType = "line" },
-        { name = "震地",       damage = 2, range = 1.5, warmup = 0.6, cooldown = 6.0, qualityMin = "SR",
-          aoeType = "circle", aoeRadius = 2.0 },
-        { name = "石化气息",   damage = 0, range = 99, warmup = 0, cooldown = 0, qualityMin = "SSR",
-          trigger = "onHit", effect = { debuff = "petrify", duration = 3.0 } },
+    ["012"] = { -- 猰貐 (territorial)
+        { name = "毒牙咬击",   damage = 2, range = 1.5, warmup = 0.5, cooldown = 4.0,
+          effect = { debuff = "poison", duration = 3.0 } },
+        { name = "死复之力",   damage = 1, range = 2.0, warmup = 0.3, cooldown = 6.0,
+          backstabAfter = 1.0 },
     },
-    -- 006 水蛟
-    ["006"] = {
-        { name = "水流喷射",   damage = 1, range = 3.0, warmup = 0.5, cooldown = 4.0,
-          aoeType = "line", effect = { noSprint = 2.0 } },
-        { name = "旋涡拖拽",   damage = 1, range = 0.5, warmup = 0, cooldown = 6.0, qualityMin = "SR",
-          trigger = "nearWater" },
-        { name = "龙吼",       damage = 2, range = 3.0, warmup = 0.5, cooldown = 8.0, qualityMin = "SSR",
-          trigger = "hpBelow50", aoeType = "circle", aoeRadius = 3.0 },
+    ["013"] = { -- 毕方 (ambush)
+        { name = "讹火灼足",   damage = 1, range = 1.5, warmup = 0.0, cooldown = 0,
+          backstabAfter = 0.8 },
+        { name = "火焰喷射",   damage = 2, range = 3.0, warmup = 0.5, cooldown = 5.0,
+          aoeType = "line", effect = { debuff = "burn", duration = 2.0 } },
     },
-    -- 007 风鸣
-    ["007"] = {
-        { name = "风刃突袭",   damage = 1, range = 1.5, warmup = 0.0, cooldown = 0,
-          backstabAfter = 0.5 },
-        { name = "风压推退",   damage = 1, range = 2.0, warmup = 0, cooldown = 0, qualityMin = "SR",
-          trigger = "afterAmbush", effect = { pushback = 3.0 } },
-        { name = "隐遁撕裂",   damage = 2, range = 1.0, warmup = 0, cooldown = 0, qualityMin = "SSR",
-          trigger = "backAttack", effect = { debuff = "dizzy", duration = 2.0 } },
+    ["014"] = { -- 乘黄 (passive)
+        { name = "角力冲刺",   damage = 1, range = 2.0, warmup = 0.3, cooldown = 6.0,
+          effect = { knockback = 2.0 } },
     },
-    -- 008 土偶
-    ["008"] = {
-        { name = "泥掌拍击",   damage = 2, range = 1.0, warmup = 1.0, cooldown = 5.0 },
-        { name = "泥团投掷",   damage = 1, range = 4.0, warmup = 0.5, cooldown = 4.0,
-          aoeType = "circle", aoeRadius = 1.0,
-          effect = { debuff = "sticky", duration = 5.0 } },
+    ["015"] = { -- 文鳐鱼 (passive)
+        { name = "鸾鸣音波",   damage = 1, range = 2.5, warmup = 0.5, cooldown = 6.0,
+          aoeType = "circle", aoeRadius = 2.5 },
     },
-    -- 010 墨鸦
-    ["010"] = {
-        { name = "墨爪掠过",   damage = 1, range = 1.5, warmup = 0.0, cooldown = 3.0 },
-        { name = "墨迹喷射",   damage = 0, range = 4.0, warmup = 0, cooldown = 5.0,
-          effect = { debuff = "ink", duration = 20.0 } },
-        { name = "群鸦突袭",   damage = 2, range = 3.0, warmup = 0, cooldown = 0, qualityMin = "SSR",
-          trigger = "chaseTime", triggerVal = 15, backstabAfter = 3.0 },
+    ["016"] = { -- 九尾狐 (ambush)
+        { name = "魅惑之爪",   damage = 1, range = 1.5, warmup = 0.0, cooldown = 0,
+          backstabAfter = 0.5, effect = { debuff = "charm", duration = 2.0 } },
+        { name = "幻化脱身",   damage = 0, range = 99, warmup = 0, cooldown = 0,
+          trigger = "chaseTime", triggerVal = 6 },
+    },
+    -- R · 八兆
+    ["017"] = { -- 帝江 (passive)
+        { name = "旋转冲撞",   damage = 1, range = 1.5, warmup = 0.3, cooldown = 6.0,
+          effect = { knockback = 1.0 } },
+    },
+    ["018"] = { -- 当康 (passive)
+        { name = "獠牙顶撞",   damage = 1, range = 1.0, warmup = 0.5, cooldown = 5.0 },
+    },
+    ["019"] = { -- 狸力 (territorial)
+        { name = "鸡爪扒击",   damage = 1, range = 1.5, warmup = 0.5, cooldown = 4.0, arc = 90 },
+    },
+    ["020"] = { -- 旋龟 (territorial)
+        { name = "蛇尾横扫",   damage = 1, range = 2.0, warmup = 0.6, cooldown = 5.0, arc = 120,
+          backstabAfter = 0.8 },
+    },
+    ["021"] = { -- 并封 (territorial)
+        { name = "双头夹击",   damage = 2, range = 1.5, warmup = 0.5, cooldown = 4.0 },
+    },
+    ["022"] = { -- 何罗鱼 (passive)
+        { name = "十身缠绕",   damage = 1, range = 1.0, warmup = 0.3, cooldown = 5.0 },
+    },
+    ["023"] = { -- 化蛇 (ambush)
+        { name = "叱呼突袭",   damage = 1, range = 1.5, warmup = 0.0, cooldown = 0,
+          backstabAfter = 0.8, effect = { debuff = "daze", duration = 0.8 } },
+    },
+    ["024"] = { -- 蜚 (territorial)
+        { name = "毒息喷吐",   damage = 1, range = 2.0, warmup = 0.5, cooldown = 4.0,
+          aoeType = "line", effect = { debuff = "poison", duration = 3.0 } },
+        { name = "蛇尾鞭击",   damage = 1, range = 1.5, warmup = 0.4, cooldown = 5.0 },
     },
 }
 
@@ -131,7 +189,6 @@ function BeastAI.getPrimaryAttack(beast)
             return atk
         end
     end
-    -- 如果全都是触发型，取第一个满足品质的
     for _, atk in ipairs(defs) do
         if BeastAI.meetsQuality(beast, atk.qualityMin) then
             return atk
@@ -162,18 +219,6 @@ function BeastAI.update(beast, dt, playerX, playerY, map, options)
     local playerMoving = options.playerMoving
     if playerMoving == nil then playerMoving = true end
 
-    -- 石灵石化防御倒计时
-    if beast.petrifyTimer and beast.petrifyTimer > 0 then
-        beast.petrifyTimer = beast.petrifyTimer - dt
-        if beast.petrifyTimer <= 0 then
-            beast.petrifyTimer = 0
-            if beast.aiState == "petrified" then
-                beast.aiState = "idle"
-                beast.idleDuration = 1
-            end
-        end
-    end
-
     -- 背刺窗口倒计时
     if beast.backstabWindow and beast.backstabWindow > 0 then
         beast.backstabWindow = beast.backstabWindow - dt
@@ -191,30 +236,14 @@ function BeastAI.update(beast, dt, playerX, playerY, map, options)
         end
     end
 
-    -- 风鸣隐形：wander状态下透明，其他状态可见
-    if beast.id == "007" then
-        beast.invisible = (state == "wander" or state == "idle")
-        -- 竹林中无法隐形
-        if playerInBamboo and beast.invisible then
-            local bTileX = math.floor(beast.x)
-            local bTileY = math.floor(beast.y)
-            local bTile = map and map.getTile and map:getTile(bTileX, bTileY)
-            if bTile and bTile.type == "bamboo" then
-                beast.invisible = false
-            end
-        end
-    else
-        beast.invisible = false
-    end
-
-    -- 墨鸦墨迹：flee状态下每0.5秒生成墨迹
-    if beast.id == "010" and state == "flee" then
-        beast.inkTimer = (beast.inkTimer or 0) + dt
-        if beast.inkTimer >= 0.5 then
-            beast.inkTimer = 0
-            EventBus.emit("ink_patch_created", {
-                x = beast.x, y = beast.y, duration = 20,
-            })
+    -- 猰貐假死状态
+    if beast.fakeDeath and beast.fakeDeathTimer then
+        beast.fakeDeathTimer = beast.fakeDeathTimer - dt
+        if beast.fakeDeathTimer <= 0 then
+            beast.fakeDeath = false
+            beast.fakeDeathTimer = nil
+            beast.aiState = "idle"
+            beast.idleDuration = 1
         end
     end
 
@@ -246,11 +275,6 @@ function BeastAI.update(beast, dt, playerX, playerY, map, options)
 
     elseif state == "wander" then
         local speed = beast.baseSpeed or 1.5
-        -- 水蛟水面加速
-        if beast.id == "006" then
-            speed = speed + BeastAI.getWaterBonus(beast, map)
-        end
-        -- 减速效果（技能/封印阵）
         if beast.slowMul and beast.slowTimer and beast.slowTimer > 0 then
             speed = speed * beast.slowMul
         end
@@ -267,11 +291,6 @@ function BeastAI.update(beast, dt, playerX, playerY, map, options)
         local senseRange = (beast.senseRange or 3) + (BeastAI.QUALITY_SENSE_BONUS[beast.quality] or 0)
         if playerInBamboo then senseRange = senseRange - 2 end
         if options.playerInDanger then senseRange = senseRange - 1 end
-        -- 玄狐在竹林中感知缩减
-        if beast.id == "001" and playerInBamboo then
-            senseRange = math.min(senseRange, 1.5)
-        end
-        -- 封印阵感知削减
         if beast.zonePerceptionReduce then
             senseRange = senseRange - beast.zonePerceptionReduce
         end
@@ -292,18 +311,15 @@ function BeastAI.update(beast, dt, playerX, playerY, map, options)
             if cType == "passive" then
                 beast.aiState = "flee"
             elseif cType == "territorial" then
-                -- 领地型：进入警告
                 beast.aiState = "warn"
                 beast.warnTimer = 0
                 EventBus.emit("beast_warn", { beast = beast })
             elseif cType == "aggressive" then
-                -- 主动型：进入追击
                 beast.aiState = "chase"
                 beast.chaseTimer = 0
                 beast.chaseTriggered = false
                 beast.attackCooldown = 1.0
             elseif cType == "ambush" then
-                -- 伏击型被发现后按主动型处理
                 beast.aiState = "chase"
                 beast.chaseTimer = 0
                 beast.chaseTriggered = false
@@ -317,11 +333,7 @@ function BeastAI.update(beast, dt, playerX, playerY, map, options)
     elseif state == "flee" then
         local angle = math.atan2(beast.y - playerY, beast.x - playerX)
         beast.facing = angle
-        local speed = 3.5
-        -- 水蛟水面加速
-        if beast.id == "006" then
-            speed = speed + BeastAI.getWaterBonus(beast, map)
-        end
+        local speed = beast.fleeSpeed or 3.5
         local dx = math.cos(angle) * speed * dt
         local dy = math.sin(angle) * speed * dt
         CollisionSystem.tryMove(beast, dx, dy, map)
@@ -333,7 +345,7 @@ function BeastAI.update(beast, dt, playerX, playerY, map, options)
         end
 
     elseif state == "gaze" then
-        -- 白泽凝视：朝玩家走近1格，然后等待
+        -- 白泽凝视
         if not beast.gazePhase then beast.gazePhase = "approach" end
 
         if beast.gazePhase == "approach" then
@@ -352,14 +364,12 @@ function BeastAI.update(beast, dt, playerX, playerY, map, options)
         elseif beast.gazePhase == "watching" then
             beast.facing = math.atan2(playerY - beast.y, playerX - beast.x)
             if playerMoving then
-                -- 玩家移动→白泽逃跑
                 beast.aiState = "flee"
                 beast.gazePhase = nil
                 beast.gazeWatchTimer = nil
             else
                 beast.gazeWatchTimer = (beast.gazeWatchTimer or 0) + dt
                 if beast.gazeWatchTimer >= 3.0 then
-                    -- 玩家静止3秒→白泽放下警戒
                     beast.guardLowered = true
                     beast.ambushBonus = true
                     beast.aiState = "idle"
@@ -371,7 +381,7 @@ function BeastAI.update(beast, dt, playerX, playerY, map, options)
         end
 
     elseif state == "burst" then
-        -- 雷翼高速冲刺3秒
+        -- 应龙/其他burst行为：高速冲刺3秒
         beast.burstTimer = (beast.burstTimer or 0) + dt
         if not beast.burstTarget then
             local angle = math.random() * math.pi * 2
@@ -389,7 +399,6 @@ function BeastAI.update(beast, dt, playerX, playerY, map, options)
         end
 
     elseif state == "burst_stop" then
-        -- 雷翼停止1.5秒（追击窗口），之后进入chase追击
         beast.burstStopTimer = (beast.burstStopTimer or 0) + dt
         beast.burstWindow = true
         beast.backstabWindow = math.max(beast.backstabWindow or 0, 1.5 - beast.burstStopTimer)
@@ -402,28 +411,20 @@ function BeastAI.update(beast, dt, playerX, playerY, map, options)
             beast.attackCooldown = 2.0
         end
 
-    elseif state == "petrified" then
-        -- 石灵石化防御：不可操作，等待timer清零（由上方petrifyTimer处理）
-
     elseif state == "warn" then
-        -- 领地型：警告1.5秒，显示符文；玩家撤出领地→wander，否则→attack
         beast.warnTimer = (beast.warnTimer or 0) + dt
         beast.facing = math.atan2(playerY - beast.y, playerX - beast.x)
-        local dist = BeastAI.distTo(beast, playerX, playerY)
         local tRadius = beast.territoryRadius or 5
 
-        -- 判断玩家是否在领地外（相对领地中心）
         local tdx = playerX - (beast.territoryX or beast.x)
         local tdy = playerY - (beast.territoryY or beast.y)
         local tDist = math.sqrt(tdx * tdx + tdy * tdy)
 
         if tDist > tRadius then
-            -- 玩家撤出领地
             beast.aiState = "wander"
             beast.warnTimer = 0
             beast.wanderTarget = BeastAI.randomNearby(beast, map, 3)
         elseif beast.warnTimer >= 1.5 then
-            -- 警告时间到，发动攻击
             beast.aiState = "attack"
             beast.warnTimer = 0
             beast.attackCooldown = 0
@@ -432,24 +433,19 @@ function BeastAI.update(beast, dt, playerX, playerY, map, options)
         end
 
     elseif state == "chase" then
-        -- 主动型/伏击型：追击玩家（速度×1.3），周期攻击
         beast.chaseTimer = (beast.chaseTimer or 0) + dt
         beast.attackCooldown = (beast.attackCooldown or 0) - dt
         beast.facing = math.atan2(playerY - beast.y, playerX - beast.x)
 
         local dist = BeastAI.distTo(beast, playerX, playerY)
 
-        -- 距离>12放弃追击
         if dist > 12 then
             beast.aiState = "wander"
             beast.chaseTimer = 0
             beast.attackCooldown = 0
             beast.wanderTarget = BeastAI.randomNearby(beast, map, 3)
         else
-            -- 追击移动
             local speed = (beast.baseSpeed or 1.5) * 1.3
-            if beast.id == "006" then speed = speed + BeastAI.getWaterBonus(beast, map) end
-            -- 减速效果（技能/封印阵）
             if beast.slowMul and beast.slowTimer and beast.slowTimer > 0 then
                 speed = speed * beast.slowMul
             end
@@ -459,7 +455,6 @@ function BeastAI.update(beast, dt, playerX, playerY, map, options)
             local target = { x = playerX, y = playerY }
             BeastAI.moveToward(beast, target, dt, speed, map)
 
-            -- 检查触发型攻击（chaseTime型）
             local chaseAtk = BeastAI.getTriggeredAttack(beast, "chaseTime")
             if chaseAtk and beast.chaseTimer >= (chaseAtk.triggerVal or 99) and not beast.chaseTriggered then
                 beast.chaseTriggered = true
@@ -467,7 +462,6 @@ function BeastAI.update(beast, dt, playerX, playerY, map, options)
                 beast.attackState = chaseAtk.name
                 beast.attackTimer = chaseAtk.warmup or 0
                 beast.currentAttack = chaseAtk
-            -- 概率型触发攻击（噬天深渊吞噬）
             elseif dist <= 1.0 then
                 local chanceAtk = BeastAI.getTriggeredAttack(beast, "chance")
                 if chanceAtk and math.random() < (chanceAtk.triggerVal or 0) and beast.attackCooldown <= 0 then
@@ -479,7 +473,6 @@ function BeastAI.update(beast, dt, playerX, playerY, map, options)
                 end
             end
 
-            -- 常规攻击冷却到了
             if beast.aiState == "chase" and beast.attackCooldown <= 0 then
                 local primaryAtk = BeastAI.getPrimaryAttack(beast)
                 if primaryAtk and dist <= (primaryAtk.range or 2.0) then
@@ -492,22 +485,18 @@ function BeastAI.update(beast, dt, playerX, playerY, map, options)
         end
 
     elseif state == "attack" then
-        -- 攻击执行：warmup(预警)阶段→命中判定→硬直/背刺窗口
         beast.attackTimer = (beast.attackTimer or 0) - dt
         beast.facing = math.atan2(playerY - beast.y, playerX - beast.x)
 
         if beast.attackTimer <= 0 then
-            -- 预警结束，执行攻击
             local atk = beast.currentAttack or BeastAI.getPrimaryAttack(beast)
             if atk then
                 local dist = BeastAI.distTo(beast, playerX, playerY)
                 local hit = false
 
-                -- 命中判定：根据攻击类型判断
                 if atk.aoeType == "circle" then
                     hit = dist <= (atk.aoeRadius or 2.0)
                 elseif atk.arc then
-                    -- 扇形判断
                     if dist <= (atk.range or 2.5) then
                         local toPlayer = math.atan2(playerY - beast.y, playerX - beast.x)
                         local diff = toPlayer - (beast.facing or 0)
@@ -521,7 +510,6 @@ function BeastAI.update(beast, dt, playerX, playerY, map, options)
 
                 if hit and atk.damage > 0 then
                     local finalDmg = atk.damage
-                    -- 白泽庇护光晕：攻击力降低
                     if beast.atkReduction and beast.atkReductionTimer and beast.atkReductionTimer > 0 then
                         finalDmg = math.max(1, math.floor(finalDmg * (1 - beast.atkReduction)))
                     end
@@ -529,7 +517,6 @@ function BeastAI.update(beast, dt, playerX, playerY, map, options)
                     EventBus.emit("beast_attack_hit", {
                         beast = beast, attack = atk.name, damage = atk.damage,
                     })
-                    -- 命中触发的附加攻击（onHit型）
                     local onHitAtk = BeastAI.getTriggeredAttack(beast, "onHit")
                     if onHitAtk then
                         if onHitAtk.damage > 0 then
@@ -541,7 +528,6 @@ function BeastAI.update(beast, dt, playerX, playerY, map, options)
                     end
                 end
 
-                -- 应用效果
                 if hit and atk.effect then
                     if atk.effect.debuff then
                         CombatSystem.applyDebuff(atk.effect.debuff, atk.effect.duration)
@@ -558,18 +544,15 @@ function BeastAI.update(beast, dt, playerX, playerY, map, options)
                     end
                 end
 
-                -- 攻击后处理：背刺窗口或返回chase/wander
                 if atk.backstabAfter and atk.backstabAfter > 0 then
                     beast.backstabWindow = atk.backstabAfter
                 end
 
-                -- 设置攻击冷却
                 local cd = atk.cooldown or 4.0
                 if cd <= 0 then cd = 4.0 end
                 beast.attackCooldown = cd
             end
 
-            -- 攻击完毕，回到之前的行为
             local cType = BeastAI.getCombatType(beast)
             if cType == "territorial" then
                 beast.aiState = "wander"
@@ -619,14 +602,14 @@ function BeastAI.onSensed(beast, contactType, playerX, playerY, map)
         return
     end
 
-    -- 雷翼：感知后进入高速冲刺（主动型但有独特burst行为，先burst再chase）
-    if beastId == "003" then
+    -- 应龙：感知后先burst（高速冲刺）再追击
+    if beastId == "002" then
         if contactType == "front" then
             beast.aiState = "burst"
             beast.burstTimer = 0
             beast.burstTarget = nil
             beast.facing = math.atan2(beast.y - playerY, beast.x - playerX)
-        elseif contactType == "side" and beast.quality == "SSR" then
+        elseif contactType == "side" then
             beast.aiState = "burst"
             beast.burstTimer = 0
             beast.burstTarget = nil
@@ -638,15 +621,13 @@ function BeastAI.onSensed(beast, contactType, playerX, playerY, map)
 
     -- 根据战斗行为类型分发
     if cType == "passive" then
-        -- 被动型：alert→flee
         if contactType == "front" or contactType == "side" then
             beast.aiState = "alert"
         end
 
     elseif cType == "territorial" then
-        -- 领地型：alert→warn（封印阵内视为无威胁，不进入warn）
         if beast.inZone then
-            -- 封印阵内：领地型不攻击
+            -- 封印阵内不攻击
         elseif contactType == "front" then
             beast.aiState = "warn"
             beast.warnTimer = 0
@@ -656,14 +637,12 @@ function BeastAI.onSensed(beast, contactType, playerX, playerY, map)
         end
 
     elseif cType == "aggressive" then
-        -- 主动型：alert→chase
         if contactType == "front" or contactType == "side" then
             beast.aiState = "chase"
             beast.chaseTimer = 0
             beast.chaseTriggered = false
-            beast.attackCooldown = 1.5  -- 首次追击1.5秒后才能攻击
+            beast.attackCooldown = 1.5
         elseif contactType == "back" and beast.quality == "SSR" then
-            -- SSR主动型背后被发现也会追击
             beast.aiState = "chase"
             beast.chaseTimer = 0
             beast.chaseTriggered = false
@@ -671,9 +650,7 @@ function BeastAI.onSensed(beast, contactType, playerX, playerY, map)
         end
 
     elseif cType == "ambush" then
-        -- 伏击型：触发圈内立即攻击
         local dist = BeastAI.distTo(beast, playerX, playerY)
-        -- 追迹流初学+：竹林中伏击触发圈缩小
         local ambushR = beast.ambushRange or 1.5
         local SchoolEffects = require("systems.SchoolEffects")
         local sEffect = SchoolEffects.get()
@@ -683,53 +660,30 @@ function BeastAI.onSensed(beast, contactType, playerX, playerY, map)
             ambushR = sEffect.ambushRadiusOverride
         end
         if dist <= ambushR then
-            -- 伏击触发：立即攻击
             beast.invisible = false
             beast.aiState = "attack"
-            beast.attackTimer = 0  -- 无预警
+            beast.attackTimer = 0
             local ambushAtk = BeastAI.getPrimaryAttack(beast)
             beast.currentAttack = ambushAtk
             beast.attackState = ambushAtk and ambushAtk.name or nil
             EventBus.emit("beast_ambush", { beast = beast })
         else
-            -- 距离不够近，进入alert
             beast.aiState = "alert"
         end
     end
 end
 
 ------------------------------------------------------------
--- 石灵石化防御（压制失败后调用）
+-- 猰貐假死（HP归零后触发）
 ------------------------------------------------------------
-function BeastAI.enterPetrify(beast)
-    if beast.id ~= "005" then return end
-    beast.aiState = "petrified"
-    beast.petrifyTimer = 5.0
-end
-
-------------------------------------------------------------
--- 水蛟水面速度加成
-------------------------------------------------------------
-function BeastAI.getWaterBonus(beast, map)
-    if not map or not map.getTile then return 0 end
-    for dy = -3, 3 do
-        for dx = -3, 3 do
-            if dx * dx + dy * dy <= 9 then
-                local tile = map:getTile(math.floor(beast.x) + dx, math.floor(beast.y) + dy)
-                if tile and tile.type == "water" then
-                    return 0.8
-                end
-            end
-        end
-    end
-    return 0
-end
-
-------------------------------------------------------------
--- 检查异兽是否在水面附近（供QTE加速判定）
-------------------------------------------------------------
-function BeastAI.isNearWater(beast, map)
-    return BeastAI.getWaterBonus(beast, map) > 0
+function BeastAI.triggerFakeDeath(beast)
+    if beast.id ~= "012" then return false end
+    if beast.hasRevived then return false end
+    beast.fakeDeath = true
+    beast.fakeDeathTimer = 3.0
+    beast.hasRevived = true
+    beast.aiState = "idle"
+    return true
 end
 
 ------------------------------------------------------------
@@ -739,19 +693,17 @@ function BeastAI.triggerBaizeProtection(beast, allBeasts, playerX, playerY)
     if beast.id ~= "004" then return false end
     if beast.aiState ~= "gaze" then return false end
 
-    -- 降低周围2格内异兽攻击力50%持续3秒
     for _, other in ipairs(allBeasts) do
         if other ~= beast and other.aiState ~= "captured" then
             local dx = other.x - beast.x
             local dy = other.y - beast.y
-            if dx * dx + dy * dy <= 4 then -- 2格范围
+            if dx * dx + dy * dy <= 4 then
                 other.atkReduction = 0.50
                 other.atkReductionTimer = 3.0
             end
         end
     end
 
-    -- 白泽庇护后逃跑
     beast.aiState = "flee"
     beast.gazePhase = nil
     beast.gazeWatchTimer = nil
@@ -836,20 +788,39 @@ function BeastAI.getContactType(beast, playerX, playerY)
 end
 
 ------------------------------------------------------------
--- 创建异兽实体
+-- 水面判定工具（可供多系统复用）
+------------------------------------------------------------
+function BeastAI.isNearWater(beast, map)
+    if not map or not map.getTile then return false end
+    for dy = -3, 3 do
+        for dx = -3, 3 do
+            if dx * dx + dy * dy <= 9 then
+                local tile = map:getTile(math.floor(beast.x) + dx, math.floor(beast.y) + dy)
+                if tile and tile.type == "water" then
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
+
+------------------------------------------------------------
+-- 创建异兽实体（v3.0: quality从BeastData固定）
 ------------------------------------------------------------
 function BeastAI.createBeast(beastData, x, y, quality)
+    local q = beastData.quality or quality or "R"
     local beast = {
         id = beastData.id,
         type = beastData.id,
         name = beastData.name,
         element = beastData.element,
-        quality = quality or "R",
+        quality = q,
         x = x, y = y,
         halfW = (beastData.bodySize or 0.4) * 0.8,
         halfH = (beastData.bodySize or 0.4) * 0.8,
         facing = math.random() * math.pi * 2,
-        aiState = (quality == "R") and "wander" or "hidden",
+        aiState = (q == "R") and "wander" or "hidden",
         idleTimer = 0,
         idleDuration = 2 + math.random() * 3,
         alertTimer = 0,
@@ -859,27 +830,34 @@ function BeastAI.createBeast(beastData, x, y, quality)
         burstWindow = false,
         invisible = false,
         baseSpeed = beastData.baseSpeed or 1.5,
+        fleeSpeed = beastData.fleeSpeed or 3.5,
         bodySize = beastData.bodySize or 0.4,
         senseRange = beastData.senseRange or 3,
-        petrifyTimer = 0,
-        inkTimer = 0,
+        fleeChance = beastData.fleeChance or 0,
+        baseHP = beastData.hp,
         -- 战斗行为字段
         combatType = beastData.combatType or "passive",
         combatTypeSsr = beastData.combatTypeSsr,
         territoryRadius = beastData.territoryRadius or 5,
         ambushRange = beastData.ambushRange or 1.5,
-        -- 领地原点（生成位置即领地中心）
+        -- 领地原点
         territoryX = x,
         territoryY = y,
         -- 战斗状态
         warnTimer = 0,
         chaseTimer = 0,
         attackCooldown = 0,
-        attackState = nil,  -- 当前攻击动作名
-        attackTimer = 0,    -- 攻击动画/硬直计时
-        backstabWindow = 0, -- 背刺窗口剩余时间
+        attackState = nil,
+        attackTimer = 0,
+        backstabWindow = 0,
+        -- v3.0 特殊标记
+        skillImmune = beastData.skillImmune or false,
+        ccImmune = beastData.ccImmune or false,
+        revivable = beastData.revivable or false,
+        flying = beastData.flying or false,
+        dualHead = beastData.dualHead or false,
+        poisonTrail = beastData.poisonTrail or false,
     }
-    -- 初始化异兽战斗HP
     CombatSystem.initBeastHP(beast)
     return beast
 end

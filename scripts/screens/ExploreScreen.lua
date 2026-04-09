@@ -87,7 +87,7 @@ function ExploreScreen.new(params)
     self.minimapExpanded = false
     self.minimapBounds = nil
 
-    -- 墨鸦墨迹系统
+    -- 地面墨迹/毒迹系统
     self.inkPatches = {}
     -- 驱散法净化区域
     self.purifiedZones = {}
@@ -224,16 +224,7 @@ function ExploreScreen:onEnter()
         self:addToast(data.beast.name .. "发动" .. data.attack .. "！-" .. data.damage .. "滴")
         self.shakeTimer = 0.3
         self.shakeIntensity = 3
-        -- 冰蚕受击冻结反应：攻击落点（玩家位置）1格内的冰蚕短暂冻结0.5s
-        for _, b in ipairs(self.beasts or {}) do
-            if b.id == "009" and b.aiState ~= "captured" and b.aiState ~= "frozen" then
-                local dx = b.x - self.playerX
-                local dy = b.y - self.playerY
-                if dx * dx + dy * dy <= 1 then
-                    EventBus.emit("beast_frozen", { beast = b, duration = 0.5, source = "bingcan_reaction" })
-                end
-            end
-        end
+        -- TODO Phase 2: 特殊异兽受击反应
     end, self)
 
     EventBus.on("beast_warn", function(data)
@@ -262,7 +253,7 @@ function ExploreScreen:onEnter()
     end, self)
 
     EventBus.on("vision_shrink", function(data)
-        -- 视野收缩效果（噬天光吞噬等）
+        -- 视野收缩效果（烛龙昼夜之瞳等）
         self.visionShrinkRadius = data.radius or 1.5
         self.visionShrinkTimer = data.duration or 5.0
     end, self)
@@ -364,7 +355,7 @@ function ExploreScreen:onEnter()
     end, self)
     EventBus.on("beast_stunned", function(data)
         local beast = data.beast
-        if beast then
+        if beast and not beast.ccImmune then
             beast.stunTimer = data.duration
             beast.prevAiState = beast.aiState
             beast.aiState = "stunned"
@@ -372,14 +363,14 @@ function ExploreScreen:onEnter()
     end, self)
     EventBus.on("beast_slowed", function(data)
         local beast = data.beast
-        if beast then
+        if beast and not beast.skillImmune then
             beast.slowTimer = data.duration
             beast.slowMul = data.speedMul
         end
     end, self)
     EventBus.on("beast_frozen", function(data)
         local beast = data.beast
-        if beast then
+        if beast and not beast.ccImmune then
             beast.freezeTimer = data.duration
             beast.prevAiState = beast.aiState
             beast.aiState = "frozen"
@@ -447,7 +438,7 @@ end
 function ExploreScreen:spawnTrackedBeast(quality)
     local biome = SessionState.selectedBiome
     local beastInfo = biome
-        and BeastData.getRandomForBiome(biome)
+        and BeastData.getRandomForBiome(biome, quality)
         or BeastData.getRandom()
     -- 在玩家周围 6-10 格找一个可通行位置
     local tx, ty
@@ -568,15 +559,15 @@ function ExploreScreen:update(dt)
         end
     end
 
-    -- 迷雾更新（竹林中视野缩减至3格，噬天被动+1格，追迹流派+视距）
+    -- 迷雾更新（竹林中视野缩减至3格，追迹流派+视距）
     local visionRadius = Config.VISION_RADIUS
     if self.playerInBamboo then visionRadius = 3.0 end
-    if self:hasCapturedBeast("002") then visionRadius = visionRadius + 1 end
+    -- TODO Phase 2: 封印被动视野加成
     local effect = getSchoolEffect()
     if effect and effect.clueVision then
         visionRadius = visionRadius + effect.clueVision
     end
-    -- 墨鸦墨迹区域降低视野
+    -- 地面墨迹/毒迹区域降低视野
     for _, patch in ipairs(self.inkPatches) do
         local pdx = self.playerX - patch.x
         local pdy = self.playerY - patch.y
@@ -587,7 +578,7 @@ function ExploreScreen:update(dt)
     end
     -- 战斗系统视野乘数（墨迹debuff）
     visionRadius = visionRadius * CombatSystem.getVisionMultiplier()
-    -- 视野收缩效果（噬天光吞噬等）
+    -- 视野收缩效果（烛龙昼夜之瞳等）
     if self.visionShrinkTimer and self.visionShrinkTimer > 0 then
         self.visionShrinkTimer = self.visionShrinkTimer - dt
         visionRadius = math.min(visionRadius, self.visionShrinkRadius or 1.5)
@@ -700,10 +691,7 @@ function ExploreScreen:updatePlayerMovement(dt)
         if self.rushWardTimer and self.rushWardTimer > 0 then
             speed = speed * 1.3
         end
-        -- 水蛟被动：水面地形移速+20%
-        if tileType == "water" and self:hasCapturedBeast("006") then
-            speed = speed * 1.2
-        end
+        -- TODO Phase 2: 封印被动水面移速加成
         -- 战斗系统速度乘数（debuff/溃散减速）
         speed = speed * CombatSystem.getSpeedMultiplier()
 
@@ -906,7 +894,7 @@ function ExploreScreen:updateInteraction()
     -- 1. 检测附近异兽
     for _, beast in ipairs(self.beasts) do
         if beast.aiState ~= "captured" and beast.aiState ~= "hidden"
-           and beast.aiState ~= "petrified" and beast.aiState ~= "burst" then
+           and beast.aiState ~= "burst" and not beast.fakeDeath then
             local dist = BeastAI.distTo(beast, self.playerX, self.playerY)
             if dist < 1.2 and self:hasLineOfSight(self.playerX, self.playerY, beast.x, beast.y) then
                 local contactType = BeastAI.getContactType(beast, self.playerX, self.playerY)
@@ -922,9 +910,9 @@ function ExploreScreen:updateInteraction()
         end
     end
 
-    -- 2. 检测线索（玄狐被动：检测范围+0.4）
+    -- 2. 检测线索
     local clueRange = 1.2
-    if self:hasCapturedBeast("001") then clueRange = clueRange + 0.4 end
+    -- TODO Phase 2: 封印被动线索范围加成
     for _, clue in ipairs(self.map.clues) do
         if not clue.investigated then
             local dx = clue.x - self.playerX
@@ -983,15 +971,8 @@ function ExploreScreen:doInteract()
         if hasMirrorSand then
             SessionState.addItem("mirrorSand", -1)
         end
-        -- 水蛟水面QTE加速标记
-        if beast.id == "006" and BeastAI.isNearWater(beast, self.map) then
-            beast.nearWaterQTE = true
-        end
         SuppressSystem.start(beast, hasMirrorSand)
-        -- 水蛟水面附近QTE指针加速×1.2
-        if beast.nearWaterQTE then
-            SuppressSystem.state.speed = SuppressSystem.state.speed * 1.2
-        end
+        -- TODO Phase 2: 属性/地形 QTE 修正
         -- 流派压制效果：QTE速度/区域调整
         local sEffect = getSchoolEffect()
         if sEffect then
@@ -1057,17 +1038,12 @@ function ExploreScreen:doInteract()
 
     elseif self.interactType == "evacuate" then
         if not EvacuationSystem.evacuating then
-            -- 检查特殊撤离条件
-            local hasTuou = false
-            for _, c in ipairs(SessionState.getContracts()) do
-                if c.beastId == "008" then hasTuou = true; break end
-            end
             local eEffect = getSchoolEffect()
             EvacuationSystem.startEvacuation(self.interactTarget, {
-                hasTuou = hasTuou,
                 isCollapse = Timer.phase == "collapse",
                 hasRushWard = self.rushWardTimer and self.rushWardTimer > 0,
                 schoolTimeSave = eEffect and eEffect.evacTimeSave or 0,
+                -- TODO Phase 2: 封印被动撤离效果
             })
             TutorialSystem.checkTrigger("evacuate")
         end
@@ -1201,10 +1177,9 @@ function ExploreScreen:onSuppressResult(result)
             self:addToast("封印回响！可再次压制")
         else
             self:addToast("压制失败！")
-            -- 石灵压制失败→石化防御5秒
-            if self.activeBeast.id == "005" then
-                BeastAI.enterPetrify(self.activeBeast)
-                self:addToast("石灵进入石化防御！")
+            -- 猰貐假死：HP归零后重生
+            if self.activeBeast.revivable and BeastAI.triggerFakeDeath(self.activeBeast) then
+                self:addToast("猰貐进入假死状态！")
             else
                 self.activeBeast.aiState = "flee"
             end
@@ -1244,12 +1219,8 @@ function ExploreScreen:onEvacuationComplete()
         return
     end
     local soulCharmCount = SessionState.getItemCount("soulCharm")
-    -- 检查冰蚕被动效果
+    -- TODO Phase 2: 封印被动灵契稳定效果
     local hasIceSilk = false
-    for _, c in ipairs(contracts) do
-        if c.beastId == "009" then hasIceSilk = true; break end
-    end
-    -- 流派撤离保护
     local evacEffect = getSchoolEffect()
     local schoolProtect = evacEffect and evacEffect.contractProtect or 0
     -- 撤离大成：安全逃脱（无灵契损失）
@@ -1756,8 +1727,8 @@ function ExploreScreen:renderEntities(vg, logW, logH, t)
         end
     end
 
-    -- 资源（石灵被动：资源可透雾显示）
-    local resSeeThroughFog = self:hasCapturedBeast("005")
+    -- 资源（TODO Phase 2: 封印被动资源透视）
+    local resSeeThroughFog = false
     for _, res in ipairs(self.map.resources) do
         if not res.collected and (FogOfWar.isEntityVisible(res.x, res.y) or resSeeThroughFog) then
             if Camera.inView(res.x, res.y) then
@@ -1782,7 +1753,7 @@ function ExploreScreen:renderEntities(vg, logW, logH, t)
         end
     end
 
-    -- 墨鸦墨迹区域
+    -- 地面墨迹/毒迹区域
     for _, patch in ipairs(self.inkPatches) do
         if Camera.inView(patch.x, patch.y) then
             local sx, sy = Camera.toScreen(patch.x, patch.y)
@@ -1812,7 +1783,7 @@ function ExploreScreen:renderEntities(vg, logW, logH, t)
                     nvgStroke(vg)
                 end
                 if beast.invisible then
-                    -- 风鸣隐形：仅显示草叶扰动粒子
+                    -- 隐形异兽：仅显示草叶扰动粒子
                     for pi = 1, 3 do
                         local px = sx + math.sin(t * 2 + pi * 2.1) * ppu * 0.4
                         local py = sy + math.cos(t * 1.5 + pi * 1.7) * ppu * 0.3
@@ -1822,14 +1793,12 @@ function ExploreScreen:renderEntities(vg, logW, logH, t)
                         nvgFillColor(vg, nvgRGBAf(0.3, 0.5, 0.2, pa))
                         nvgFill(vg)
                     end
-                elseif beast.aiState == "petrified" then
-                    -- 石灵石化：灰色外框
+                elseif beast.fakeDeath then
+                    -- 猰貐假死：淡化显示
+                    nvgSave(vg)
+                    nvgGlobalAlpha(vg, 0.3)
                     BeastRenderer.draw(vg, beast, sx, sy, ppu, t)
-                    nvgBeginPath(vg)
-                    nvgCircle(vg, sx, sy, ppu * beast.bodySize * 1.2)
-                    nvgStrokeColor(vg, nvgRGBAf(0.5, 0.5, 0.5, 0.5))
-                    nvgStrokeWidth(vg, 2)
-                    nvgStroke(vg)
+                    nvgRestore(vg)
                 else
                     BeastRenderer.draw(vg, beast, sx, sy, ppu, t)
                 end

@@ -45,7 +45,7 @@ local DEFAULT_DATA = {
     dailyClaimed = {},
 
     -- 技能解锁统计
-    moyaRetreatCount = 0,  -- 被墨鸦攻击后成功撤退次数
+    moyaRetreatCount = 0,  -- 被异兽攻击后成功撤退次数
 
     -- 教学
     tutorialDone = false,

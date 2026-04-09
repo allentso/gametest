@@ -274,7 +274,7 @@ end
 ------------------------------------------------------------
 --- 初始化异兽HP（在createBeast中调用）
 function CombatSystem.initBeastHP(beast)
-    local maxHP = CombatSystem.BEAST_HP[beast.quality] or 4
+    local maxHP = beast.baseHP or CombatSystem.BEAST_HP[beast.quality] or 4
     beast.combatHP = maxHP
     beast.combatMaxHP = maxHP
     beast.weakened = false

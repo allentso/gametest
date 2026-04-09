@@ -11,11 +11,11 @@ local PrepareScreen = {}
 PrepareScreen.__index = PrepareScreen
 
 local BIOMES = {
-    { id = "翠谷灵境", beasts = "石灵·土偶·风鸣·水蛟·冰蚕", trait = "竹林最多，隐蔽战术", unlockLevel = 1 },
-    { id = "雷峰灵境", beasts = "雷翼·白泽·风鸣",           trait = "无水面，瘴气偏高",   unlockLevel = 2 },
-    { id = "焰渊灵境", beasts = "玄狐·墨鸦·石灵",           trait = "天晶×1.5，瘴气加倍", unlockLevel = 2 },
-    { id = "幽潭灵境", beasts = "水蛟·冰蚕·噬天",           trait = "水面最多，水蛟难追",  unlockLevel = 3 },
-    { id = "虚空灵境", beasts = "全部10种",                  trait = "收缩×1.2，SSR+5%",   unlockLevel = 5 },
+    { id = "翠谷灵境", beasts = "当康·狸力·旋龟·何罗鱼·帝江 / 乘黄·文鳐鱼·混沌·九尾狐 / 麒麟·白泽", trait = "竹林最多，隐蔽战术", unlockLevel = 1 },
+    { id = "雷峰灵境", beasts = "化蛇·并封·蜚·狸力 / 毕方·穷奇·九婴 / 应龙·白虎", trait = "无水面，瘴气偏高", unlockLevel = 2 },
+    { id = "焰渊灵境", beasts = "当康·化蛇·蜚 / 饕餮·九尾狐·毕方 / 凤凰·烛龙", trait = "天晶×1.5，瘴气加倍", unlockLevel = 2 },
+    { id = "幽潭灵境", beasts = "旋龟·何罗鱼·并封·帝江 / 猰貐·九婴·混沌 / 烛龙·白泽", trait = "水面最多，雾气浓重", unlockLevel = 3 },
+    { id = "虚空灵境", beasts = "全部24种", trait = "收缩×1.2，SSR+5%", unlockLevel = 5 },
 }
 
 local SCHOOLS = {

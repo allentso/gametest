@@ -1,26 +1,20 @@
---- 异兽水墨绘制 - 白描骨架体系：每种异兽具象化水墨形态
+--- 异兽水墨绘制 v3.0 — 24 只异兽白描骨架体系
 local InkPalette = require("data.InkPalette")
 local BrushStrokes = require("render.BrushStrokes")
 
 local BeastRenderer = {}
-
---- 异兽形态定义（水墨白描画法）
 BeastRenderer.shapes = {}
 
 ------------------------------------------------------------
--- 白描原语：不规则闭合曲线轮廓（替代标准椭圆）
+-- 白描原语
 ------------------------------------------------------------
 
---- 绘制不规则闭合曲线轮廓（白描描边）
---- pts: {{x,y}, {x,y}, ...} 闭合点序列
---- 用贝塞尔曲线平滑连接，边缘带粗细变化
 local function drawWhiteSketch(vg, pts, cx, cy, color, fillAlpha, strokeAlpha, strokeW, seed)
     seed = seed or 0
     strokeW = strokeW or 1.2
     local n = #pts
     if n < 3 then return end
 
-    -- 填充
     nvgBeginPath(vg)
     nvgMoveTo(vg, cx + pts[1][1], cy + pts[1][2])
     for i = 2, n do
@@ -30,7 +24,6 @@ local function drawWhiteSketch(vg, pts, cx, cy, color, fillAlpha, strokeAlpha, s
         local my = (prev[2] + curr[2]) * 0.5
         nvgQuadTo(vg, cx + prev[1], cy + prev[2], cx + mx, cy + my)
     end
-    -- 闭合
     local last = pts[n]
     local first = pts[1]
     local mx = (last[1] + first[1]) * 0.5
@@ -43,17 +36,15 @@ local function drawWhiteSketch(vg, pts, cx, cy, color, fillAlpha, strokeAlpha, s
         nvgFill(vg)
     end
 
-    -- 描边（分段画，模拟粗细变化）
     if strokeAlpha > 0 then
         nvgLineCap(vg, NVG_ROUND)
         nvgLineJoin(vg, NVG_ROUND)
         for i = 1, n do
             local p1 = pts[i]
             local p2 = pts[i % n + 1]
-            -- 飞白概率：10% 跳过
             local hash = (seed * 7 + i * 31) % 100
             if hash > 10 then
-                local thickVar = 1.0 + ((hash % 40) - 20) / 100  -- ±20% 粗细
+                local thickVar = 1.0 + ((hash % 40) - 20) / 100
                 nvgBeginPath(vg)
                 nvgMoveTo(vg, cx + p1[1], cy + p1[2])
                 nvgLineTo(vg, cx + p2[1], cy + p2[2])
@@ -73,21 +64,15 @@ function BeastRenderer.draw(vg, beast, sx, sy, ppu, t)
     local r = (beast.bodySize or 0.55) * ppu
     local qColor = InkPalette.qualColor(beast.quality)
 
-    -- 呼吸缩放（0.8s 循环）
     local breathe = 1.0 + math.sin(t * math.pi * 2 / 0.8) * 0.03
-
     nvgSave(vg)
     nvgTranslate(vg, sx, sy)
     nvgScale(vg, breathe, breathe)
     nvgTranslate(vg, -sx, -sy)
 
-    -- 品质光晕
     BeastRenderer.drawQualityGlow(vg, beast.quality, sx, sy, r, qColor, t)
-
-    -- 朝向指示扇形（视野锥）
     BeastRenderer.drawFacingCone(vg, beast, sx, sy, r, t)
 
-    -- 主体形态
     local shapeFn = BeastRenderer.shapes[beast.type]
     if shapeFn then
         shapeFn(vg, sx, sy, r, t, beast)
@@ -95,7 +80,6 @@ function BeastRenderer.draw(vg, beast, sx, sy, ppu, t)
         BeastRenderer.drawDefaultShape(vg, sx, sy, r, t, beast)
     end
 
-    -- 状态特效 + 头顶图标
     if beast.aiState == "alert" then
         BeastRenderer.drawAlertMark(vg, sx, sy, r, t)
     elseif beast.aiState == "warn" then
@@ -108,12 +92,12 @@ function BeastRenderer.draw(vg, beast, sx, sy, ppu, t)
         BeastRenderer.drawSpeedLines(vg, beast, sx, sy, r, t)
     end
 
-    -- 异兽HP条（有HP且非满血时显示）
-    if beast.hp and beast.maxHP and beast.hp < beast.maxHP and beast.hp > 0 then
-        BeastRenderer.drawBeastHPBar(vg, beast, sx, sy, r)
+    local beastHP = beast.combatHP or beast.hp
+    local beastMaxHP = beast.combatMaxHP or beast.maxHP
+    if beastHP and beastMaxHP and beastHP < beastMaxHP and beastHP > 0 then
+        BeastRenderer.drawBeastHPBar(vg, beast, sx, sy, r, beastHP, beastMaxHP)
     end
 
-    -- 攻击预警视觉（warmup阶段）
     if beast.aiState == "attack" and beast.attackTimer and beast.attackTimer > 0 then
         BeastRenderer.drawAttackWarning(vg, beast, sx, sy, r, ppu, t)
     end
@@ -121,14 +105,15 @@ function BeastRenderer.draw(vg, beast, sx, sy, ppu, t)
     nvgRestore(vg)
 end
 
---- 品质光晕
+------------------------------------------------------------
+-- 共用绘制辅助（品质光晕/朝向锥/状态标记/HP条/攻击预警）
+------------------------------------------------------------
+
 function BeastRenderer.drawQualityGlow(vg, quality, sx, sy, r, color, t)
     if quality == "R" then return end
-
     if quality == "SR" then
         local pulse = 1.0 + math.sin(t * 2) * 0.08
-        BrushStrokes.inkWash(vg, sx, sy, r * 0.8 * pulse, r * 2.0 * pulse,
-            color, 0.12)
+        BrushStrokes.inkWash(vg, sx, sy, r * 0.8 * pulse, r * 2.0 * pulse, color, 0.12)
     elseif quality == "SSR" then
         for i = 1, 3 do
             local scale = 1.0 + (i - 1) * 0.4
@@ -137,52 +122,42 @@ function BeastRenderer.drawQualityGlow(vg, quality, sx, sy, r, color, t)
                 r * scale * pulse, r * (scale + 0.8) * pulse,
                 color, 0.10 - (i - 1) * 0.02)
         end
-        local particleCount = 6
-        for i = 1, particleCount do
-            local angle = (i / particleCount) * math.pi * 2 + t * 2.0
+        for i = 1, 6 do
+            local angle = (i / 6) * math.pi * 2 + t * 2.0
             local dist = r * 2.2 + math.sin(t * 3 + i * 1.2) * r * 0.3
             local px = sx + math.cos(angle) * dist
             local py = sy + math.sin(angle) * dist
-            BrushStrokes.inkDotStable(vg, px, py, 1.5,
-                InkPalette.gold, 0.30, i * 7)
+            BrushStrokes.inkDotStable(vg, px, py, 1.5, InkPalette.gold, 0.30, i * 7)
         end
     end
 end
 
---- 朝向扇形视野锥
 function BeastRenderer.drawFacingCone(vg, beast, sx, sy, r, t)
     local facing = beast.facing or 0
     local coneAngle = math.pi / 3
     local coneR = r * 2.5
     local alpha = 0.07 + math.sin(t * 1.5) * 0.02
-
     nvgSave(vg)
     nvgBeginPath(vg)
     nvgMoveTo(vg, sx, sy)
     nvgArc(vg, sx, sy, coneR, -facing - coneAngle, -facing + coneAngle, NVG_CW)
     nvgClosePath(vg)
-    nvgFillColor(vg, nvgRGBAf(
-        InkPalette.inkLight.r, InkPalette.inkLight.g, InkPalette.inkLight.b, alpha))
+    nvgFillColor(vg, nvgRGBAf(InkPalette.inkLight.r, InkPalette.inkLight.g, InkPalette.inkLight.b, alpha))
     nvgFill(vg)
     nvgRestore(vg)
 end
 
---- 默认异兽形态（白描不规则体，替代旧版椭圆）
 function BeastRenderer.drawDefaultShape(vg, sx, sy, r, t, beast)
     local ink = InkPalette.inkStrong
     local seed = beast.facing and math.floor(beast.facing * 100) or 0
-
-    -- 不规则六边形轮廓
     local pts = {}
     for i = 1, 6 do
         local angle = (i - 1) / 6 * math.pi * 2 - math.pi / 2
         local hash = (seed * 7 + i * 31) % 100
-        local rVar = r * (0.55 + hash / 300)  -- 0.55-0.88 r
+        local rVar = r * (0.55 + hash / 300)
         table.insert(pts, { math.cos(angle) * rVar, math.sin(angle) * rVar * 0.75 })
     end
     drawWhiteSketch(vg, pts, sx, sy, ink, 0.45, 0.65, 1.2, seed)
-
-    -- 眼睛
     local facing = beast.facing or 0
     local eyeDist = r * 0.3
     local eyeX = sx + math.cos(-facing) * eyeDist
@@ -195,26 +170,21 @@ function BeastRenderer.drawDefaultShape(vg, sx, sy, r, t, beast)
     nvgRestore(vg)
 end
 
---- 警觉标记 "!"
 function BeastRenderer.drawAlertMark(vg, sx, sy, r, t)
     local bounce = math.sin(t * 4) * r * 0.15
     local markY = sy - r * 1.5 + bounce
-
     nvgSave(vg)
     nvgFontSize(vg, r * 1.5)
     nvgFontFace(vg, "sans")
     nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
-    nvgFillColor(vg, nvgRGBAf(
-        InkPalette.cinnabar.r, InkPalette.cinnabar.g, InkPalette.cinnabar.b, 0.90))
+    nvgFillColor(vg, nvgRGBAf(InkPalette.cinnabar.r, InkPalette.cinnabar.g, InkPalette.cinnabar.b, 0.90))
     nvgText(vg, sx, markY, "!")
     nvgRestore(vg)
 end
 
---- 逃跑速度线
 function BeastRenderer.drawSpeedLines(vg, beast, sx, sy, r, t)
     local facing = beast.facing or 0
     local backAngle = facing + math.pi
-
     nvgSave(vg)
     nvgLineCap(vg, NVG_ROUND)
     for i = 1, 3 do
@@ -225,28 +195,22 @@ function BeastRenderer.drawSpeedLines(vg, beast, sx, sy, r, t)
         local startY = sy + math.sin(-angle) * r * 0.6
         local endX = startX + math.cos(-angle) * len
         local endY = startY + math.sin(-angle) * len
-
         nvgBeginPath(vg)
         nvgMoveTo(vg, startX, startY)
         nvgLineTo(vg, endX, endY)
         nvgStrokeWidth(vg, 1.2 - i * 0.2)
-        nvgStrokeColor(vg, nvgRGBAf(
-            InkPalette.inkMedium.r, InkPalette.inkMedium.g, InkPalette.inkMedium.b,
-            0.45 - i * 0.12))
+        nvgStrokeColor(vg, nvgRGBAf(InkPalette.inkMedium.r, InkPalette.inkMedium.g, InkPalette.inkMedium.b, 0.45 - i * 0.12))
         nvgStroke(vg)
     end
     nvgRestore(vg)
 end
 
---- 警告标记 "×"（warn状态，领地警告）
 function BeastRenderer.drawWarnMark(vg, sx, sy, r, t)
     local shake = math.sin(t * 6) * r * 0.08
     local markY = sy - r * 1.5 + shake
     local markSize = r * 0.35
-
     nvgSave(vg)
     nvgLineCap(vg, NVG_ROUND)
-    -- 墨色叉号
     local ink = InkPalette.inkStrong
     local alpha = 0.75 + math.sin(t * 3) * 0.15
     nvgStrokeWidth(vg, 2.0)
@@ -262,16 +226,12 @@ function BeastRenderer.drawWarnMark(vg, sx, sy, r, t)
     nvgRestore(vg)
 end
 
---- 追击标记 "火焰"图标（chase状态）
 function BeastRenderer.drawChaseMark(vg, sx, sy, r, t)
     local markY = sy - r * 1.6
     local flicker = math.sin(t * 8) * r * 0.05
-
     nvgSave(vg)
-    -- 火焰形状（简化水墨火焰：3个尖瓣）
     local cin = InkPalette.cinnabar
     local alpha = 0.70 + math.sin(t * 5) * 0.20
-
     for i = -1, 1 do
         local fx = sx + i * r * 0.15
         local baseY = markY + r * 0.2
@@ -287,46 +247,35 @@ function BeastRenderer.drawChaseMark(vg, sx, sy, r, t)
     nvgRestore(vg)
 end
 
---- 眩晕/冻结标记 "ZZZ"（stunned/frozen状态）
 function BeastRenderer.drawStunnedMark(vg, sx, sy, r, t)
     local markY = sy - r * 1.5
     local bob = math.sin(t * 2) * r * 0.06
-
     nvgSave(vg)
     nvgFontFace(vg, "sans")
     nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
-
-    -- 三个"Z"，从小到大渐远
     local ink = InkPalette.inkMedium
     for i = 1, 3 do
         local zx = sx + (i - 1) * r * 0.25 - r * 0.15
         local zy = markY - (i - 1) * r * 0.2 + bob * i * 0.3
-        local fontSize = r * (0.5 + i * 0.15)
-        local alpha = 0.55 - (i - 1) * 0.12
-        nvgFontSize(vg, fontSize)
-        nvgFillColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, alpha))
+        nvgFontSize(vg, r * (0.5 + i * 0.15))
+        nvgFillColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.55 - (i - 1) * 0.12))
         nvgText(vg, zx, zy, "Z")
     end
     nvgRestore(vg)
 end
 
---- 异兽HP条（伤血后显示在身体下方）
-function BeastRenderer.drawBeastHPBar(vg, beast, sx, sy, r)
+function BeastRenderer.drawBeastHPBar(vg, beast, sx, sy, r, hp, maxHP)
     local barW = r * 1.6
     local barH = 3
     local barX = sx - barW * 0.5
     local barY = sy + r * 0.8
-
-    local hpFrac = beast.hp / beast.maxHP
+    local hpFrac = hp / maxHP
     local P = InkPalette
-
     nvgSave(vg)
-    -- 底框
     nvgBeginPath(vg)
     nvgRoundedRect(vg, barX, barY, barW, barH, 1.5)
     nvgFillColor(vg, nvgRGBAf(P.inkWash.r, P.inkWash.g, P.inkWash.b, 0.40))
     nvgFill(vg)
-    -- 血量填充
     local fillColor = hpFrac > 0.3 and P.cinnabar or P.gold
     nvgBeginPath(vg)
     nvgRoundedRect(vg, barX, barY, barW * hpFrac, barH, 1.5)
@@ -335,56 +284,37 @@ function BeastRenderer.drawBeastHPBar(vg, beast, sx, sy, r)
     nvgRestore(vg)
 end
 
---- 攻击预警视觉（warmup阶段绘制方向/范围提示）
 function BeastRenderer.drawAttackWarning(vg, beast, sx, sy, r, ppu, t)
     local atk = beast.currentAttack
     if not atk then return end
     local warmup = atk.warmup or 0
-    if warmup <= 0 then return end -- warmup=0 = 无预警（偷袭类）
-
-    -- 进度：0→1，1 表示即将命中
+    if warmup <= 0 then return end
     local progress = math.min(1.0, 1.0 - (beast.attackTimer or 0) / warmup)
-
-    -- 闪烁加速：进度越大闪烁越快
-    local flashHz = 3 + progress * 8  -- 3→11 Hz
+    local flashHz = 3 + progress * 8
     local flash = 0.5 + 0.5 * math.sin(t * flashHz * math.pi * 2)
-    local baseAlpha = 0.15 + progress * 0.45 -- 0.15→0.60
-
+    local baseAlpha = 0.15 + progress * 0.45
     local facing = beast.facing or 0
     local P = InkPalette
-
     if atk.aoeType == "line" then
-        ----------------------------------------
-        -- 线型预警：方向箭头 + 射线
-        ----------------------------------------
         local range = (atk.range or 3.0) * ppu
-        local arrowLen = range * progress  -- 逐渐延伸
-
-        -- 射线方向
+        local arrowLen = range * progress
         local dx = math.cos(facing)
         local dy = math.sin(facing)
-
-        -- 危险射线（从兽身延伸）
         local lineAlpha = baseAlpha * flash
         nvgSave(vg)
         nvgLineCap(vg, NVG_ROUND)
-
-        -- 主线
         nvgBeginPath(vg)
         nvgMoveTo(vg, sx, sy)
         nvgLineTo(vg, sx + dx * arrowLen, sy + dy * arrowLen)
         nvgStrokeWidth(vg, 2.5 + progress * 2.0)
         nvgStrokeColor(vg, nvgRGBAf(P.cinnabar.r, P.cinnabar.g, P.cinnabar.b, lineAlpha))
         nvgStroke(vg)
-
-        -- 箭头三角
         if progress > 0.3 then
             local tipX = sx + dx * arrowLen
             local tipY = sy + dy * arrowLen
-            local perpX = -dy  -- 垂直方向
+            local perpX = -dy
             local perpY = dx
             local headSize = (6 + progress * 6)
-
             nvgBeginPath(vg)
             nvgMoveTo(vg, tipX + dx * headSize, tipY + dy * headSize)
             nvgLineTo(vg, tipX + perpX * headSize * 0.6, tipY + perpY * headSize * 0.6)
@@ -393,94 +323,38 @@ function BeastRenderer.drawAttackWarning(vg, beast, sx, sy, r, ppu, t)
             nvgFillColor(vg, nvgRGBAf(P.cinnabar.r, P.cinnabar.g, P.cinnabar.b, lineAlpha * 0.8))
             nvgFill(vg)
         end
-
         nvgRestore(vg)
-
     elseif atk.aoeType == "circle" then
-        ----------------------------------------
-        -- 圆形AOE预警：扩散裂纹圆 + 中心震波
-        ----------------------------------------
         local aoeR = (atk.aoeRadius or 2.0) * ppu
-        local expandR = aoeR * progress  -- 逐渐扩大到满半径
-
+        local expandR = aoeR * progress
         nvgSave(vg)
-
-        -- 扩散圆环（水墨裂纹感）
         local ringAlpha = baseAlpha * flash * 0.7
         nvgBeginPath(vg)
         nvgCircle(vg, sx, sy, expandR)
         nvgStrokeWidth(vg, 1.5 + progress * 1.5)
         nvgStrokeColor(vg, nvgRGBAf(P.cinnabar.r, P.cinnabar.g, P.cinnabar.b, ringAlpha))
         nvgStroke(vg)
-
-        -- 内部填充（半透明危险区域）
         if progress > 0.4 then
             nvgBeginPath(vg)
             nvgCircle(vg, sx, sy, expandR)
-            nvgFillColor(vg, nvgRGBAf(P.cinnabar.r, P.cinnabar.g, P.cinnabar.b,
-                (progress - 0.4) * 0.15 * flash))
+            nvgFillColor(vg, nvgRGBAf(P.cinnabar.r, P.cinnabar.g, P.cinnabar.b, (progress - 0.4) * 0.15 * flash))
             nvgFill(vg)
         end
-
-        -- 裂纹线条（从中心向外放射）
-        local crackCount = 6
-        nvgLineCap(vg, NVG_ROUND)
-        for i = 1, crackCount do
-            local angle = (i - 1) / crackCount * math.pi * 2 + t * 0.5
-            local crackLen = expandR * (0.5 + progress * 0.5)
-            -- 锯齿状裂纹
-            nvgBeginPath(vg)
-            nvgMoveTo(vg, sx, sy)
-            local steps = 3
-            for s = 1, steps do
-                local frac = s / steps
-                local jitter = math.sin(s * 7 + i * 13 + t * 3) * expandR * 0.08
-                local px = sx + math.cos(angle) * crackLen * frac + math.cos(angle + math.pi / 2) * jitter
-                local py = sy + math.sin(angle) * crackLen * frac + math.sin(angle + math.pi / 2) * jitter
-                nvgLineTo(vg, px, py)
-            end
-            nvgStrokeWidth(vg, 1.0)
-            nvgStrokeColor(vg, nvgRGBAf(P.cinnabar.r, P.cinnabar.g, P.cinnabar.b,
-                ringAlpha * 0.6))
-            nvgStroke(vg)
-        end
-
         nvgRestore(vg)
-
     else
-        ----------------------------------------
-        -- 近战/扇形预警：扇形危险区
-        ----------------------------------------
         local range = (atk.range or 2.0) * ppu
         local arcHalf = math.rad((atk.arc or 60) / 2)
         local expandRange = range * progress
-
         nvgSave(vg)
-
-        -- 扇形填充
         local arcAlpha = baseAlpha * flash * 0.5
         nvgBeginPath(vg)
         nvgMoveTo(vg, sx, sy)
-        -- NanoVG 角度：facing 从 atan2 而来，需转为屏幕角度
         nvgArc(vg, sx, sy, expandRange, facing - arcHalf, facing + arcHalf, NVG_CW)
         nvgClosePath(vg)
         nvgFillColor(vg, nvgRGBAf(P.cinnabar.r, P.cinnabar.g, P.cinnabar.b, arcAlpha))
         nvgFill(vg)
-
-        -- 扇形描边
-        nvgBeginPath(vg)
-        nvgMoveTo(vg, sx, sy)
-        nvgArc(vg, sx, sy, expandRange, facing - arcHalf, facing + arcHalf, NVG_CW)
-        nvgClosePath(vg)
-        nvgStrokeWidth(vg, 1.5)
-        nvgStrokeColor(vg, nvgRGBAf(P.cinnabar.r, P.cinnabar.g, P.cinnabar.b,
-            arcAlpha * 1.5))
-        nvgStroke(vg)
-
         nvgRestore(vg)
     end
-
-    -- 通用：预警 "!" 字符脉冲（进度>60%时显示）
     if progress > 0.6 then
         local bangAlpha = (progress - 0.6) / 0.4 * flash * 0.8
         local bangY = sy - r * 1.8
@@ -494,282 +368,159 @@ function BeastRenderer.drawAttackWarning(vg, beast, sx, sy, r, ppu, t)
     end
 end
 
---- 偷袭成功 "袭" 字闪现
-function BeastRenderer.drawAmbushFlash(vg, sx, sy, r, elapsed)
-    if elapsed > 0.5 then return end
-    local alpha = 1.0 - elapsed / 0.5
-    nvgSave(vg)
-    nvgFontSize(vg, r * 1.2)
-    nvgFontFace(vg, "sans")
-    nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
-    nvgFillColor(vg, nvgRGBAf(
-        InkPalette.cinnabar.r, InkPalette.cinnabar.g, InkPalette.cinnabar.b, alpha))
-    nvgText(vg, sx, sy - r * 0.5, "袭")
-    nvgRestore(vg)
-end
-
 ------------------------------------------------------------
--- 具体异兽形态：白描骨架体系
+-- SSR · 六灵 形态
 ------------------------------------------------------------
 
--- 001 玄狐 — 灵巧狐形，大耳 + 飞白尾
+-- 001 烛龙 — 人面蛇身，赤红，竖瞳，极大体型
 BeastRenderer.shapes["001"] = function(vg, sx, sy, r, t, beast)
-    local ink = InkPalette.inkStrong
-
-    -- 躯干：梭形不规则体
-    local body = {
-        {-r * 0.6,  r * 0.15},
-        {-r * 0.3, -r * 0.35},
-        { r * 0.1, -r * 0.4},
-        { r * 0.7, -r * 0.15},
-        { r * 0.65, r * 0.2},
-        { r * 0.1,  r * 0.35},
-        {-r * 0.3,  r * 0.3},
-    }
-    drawWhiteSketch(vg, body, sx, sy, ink, 0.45, 0.60, 1.3, 101)
-
-    -- 双耳（三角尖耳，飞白描边）
-    nvgSave(vg)
-    nvgLineCap(vg, NVG_ROUND)
-    for side = -1, 1, 2 do
-        local earBase = r * 0.25
-        local earTip = r * 0.5
-        local bx = sx + side * r * 0.2
-        local by = sy - r * 0.35
-        nvgBeginPath(vg)
-        nvgMoveTo(vg, bx - side * earBase * 0.3, by)
-        nvgLineTo(vg, bx + side * earBase * 0.15, by - earTip)
-        nvgLineTo(vg, bx + side * earBase * 0.5, by + earBase * 0.1)
-        nvgStrokeWidth(vg, 1.4)
-        nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.55))
-        nvgStroke(vg)
-        -- 耳内填充
-        nvgFillColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.30))
-        nvgFill(vg)
-    end
-
-    -- 三尾：三条飞白弧线，各自摇摆，尾端带火焰
     local cin = InkPalette.cinnabar
-    local tailOffsets = {
-        { yBase =  0.05, ctrlY = -0.4, tipY = -0.55, phase = 0 },
-        { yBase =  0.15, ctrlY = -0.1, tipY = -0.35, phase = 1.2 },
-        { yBase = -0.05, ctrlY = -0.6, tipY = -0.70, phase = 2.4 },
-    }
-    for ti, td in ipairs(tailOffsets) do
-        local sway = math.sin(t * 2 + td.phase) * r * 0.12
-        local baseX, baseY = sx - r * 0.55, sy + r * td.yBase
-        local tipX  = sx - r * 0.8  + sway * 0.3
-        local tipY  = sy + r * td.tipY + sway
-        nvgBeginPath(vg)
-        nvgMoveTo(vg, baseX, baseY)
-        nvgBezierTo(vg,
-            sx - r * 1.05, sy + r * td.ctrlY + sway,
-            sx - r * 1.2,  tipY + r * 0.1,
-            tipX, tipY)
-        nvgStrokeWidth(vg, 2.2)
-        nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.40))
-        nvgStroke(vg)
-        -- 尾焰（朱砂光点 + 墨晕，"尾焰如灯"）
-        local flamePulse = 0.35 + math.sin(t * 5 + td.phase) * 0.15
-        BrushStrokes.inkWash(vg, tipX, tipY, r * 0.06, r * 0.25,
-            cin, flamePulse)
-        BrushStrokes.inkDotStable(vg, tipX, tipY, r * 0.05,
-            cin, 0.65, 20 + ti)
-    end
-
-    -- 眼睛：朱砂点
-    local facing = beast.facing or 0
-    local ex = sx + math.cos(-facing) * r * 0.35
-    local ey = sy + math.sin(-facing) * r * 0.25
-    BrushStrokes.inkDotStable(vg, ex, ey, r * 0.06, InkPalette.cinnabar, 0.70, 7)
-
-    nvgRestore(vg)
-end
-
--- 002 噬天 — 吞光巨兽，行则天暗，蜿蜒蛇形 + 暗影气场
-BeastRenderer.shapes["002"] = function(vg, sx, sy, r, t, beast)
     local ink = InkPalette.inkDark
-    local wave = math.sin(t * 2) * r * 0.15
-
+    local wave = math.sin(t * 1.5) * r * 0.18
     nvgSave(vg)
-
-    -- 暗影吞光气场（"行则天暗"：大范围深色墨晕脉动）
-    local auraPulse = 1.0 + math.sin(t * 1.2) * 0.15
-    BrushStrokes.inkWash(vg, sx, sy, r * 0.5, r * 2.5 * auraPulse,
-        InkPalette.inkDark, 0.18)
-    BrushStrokes.inkWash(vg, sx, sy, r * 0.2, r * 1.5 * auraPulse,
-        InkPalette.inkDark, 0.12)
-
     nvgLineCap(vg, NVG_ROUND)
-    -- 蛇身：粗→细渐变的 S 形（用 inkDark 更深色调）
+    -- 蛇身S形（赤红，极粗）
     nvgBeginPath(vg)
-    nvgMoveTo(vg, sx - r * 0.9, sy + wave * 0.5)
-    nvgBezierTo(vg,
-        sx - r * 0.3, sy - r * 0.45 + wave,
-        sx + r * 0.3, sy + r * 0.45 - wave,
-        sx + r * 0.9, sy - wave * 0.3)
-    nvgStrokeWidth(vg, r * 0.35)
-    nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.60))
+    nvgMoveTo(vg, sx - r * 1.0, sy + wave * 0.5)
+    nvgBezierTo(vg, sx - r * 0.35, sy - r * 0.5 + wave, sx + r * 0.35, sy + r * 0.5 - wave, sx + r * 1.0, sy - wave * 0.3)
+    nvgStrokeWidth(vg, r * 0.4)
+    nvgStrokeColor(vg, nvgRGBAf(cin.r, cin.g, cin.b, 0.50))
     nvgStroke(vg)
-
-    -- 蛇头（三角形，更浓墨）
-    local headX = sx + r * 0.9
+    -- 人面（头部圆形+五官暗示）
+    local headX = sx + r * 0.95
     local headY = sy - wave * 0.3
     nvgBeginPath(vg)
-    nvgMoveTo(vg, headX, headY - r * 0.2)
-    nvgLineTo(vg, headX + r * 0.4, headY)
-    nvgLineTo(vg, headX, headY + r * 0.2)
-    nvgClosePath(vg)
-    nvgFillColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.70))
+    nvgCircle(vg, headX, headY, r * 0.28)
+    nvgFillColor(vg, nvgRGBAf(cin.r, cin.g, cin.b, 0.40))
     nvgFill(vg)
-
-    -- 蛇信（暗紫色叉舌）
-    nvgBeginPath(vg)
-    nvgMoveTo(vg, headX + r * 0.35, headY)
-    nvgLineTo(vg, headX + r * 0.55, headY - r * 0.1)
-    nvgMoveTo(vg, headX + r * 0.35, headY)
-    nvgLineTo(vg, headX + r * 0.55, headY + r * 0.1)
-    nvgStrokeWidth(vg, 1.0)
-    nvgStrokeColor(vg, nvgRGBAf(InkPalette.indigo.r, InkPalette.indigo.g, InkPalette.indigo.b, 0.55))
+    nvgStrokeWidth(vg, 1.5)
+    nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.55))
     nvgStroke(vg)
-
-    -- 鳞纹（短斜线，更密更暗）
-    for i = 1, 7 do
-        local frac = (i - 0.5) / 7
-        local px = sx + (frac * 2 - 1) * r * 0.75
-        local py = sy + math.sin(frac * math.pi + t * 2) * r * 0.2
+    -- 竖瞳
+    for side = -1, 1, 2 do
+        local ex = headX + side * r * 0.1
+        local ey = headY - r * 0.03
         nvgBeginPath(vg)
-        nvgMoveTo(vg, px - 2.5, py - 2)
-        nvgLineTo(vg, px + 2.5, py + 1.5)
-        nvgStrokeWidth(vg, 0.8)
-        nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.30))
-        nvgStroke(vg)
+        nvgEllipse(vg, ex, ey, r * 0.03, r * 0.07)
+        nvgFillColor(vg, nvgRGBAf(InkPalette.gold.r, InkPalette.gold.g, InkPalette.gold.b, 0.85))
+        nvgFill(vg)
     end
-
-    -- 暗瞳（深邃的紫色眼光）
-    local eyeX = headX + r * 0.15
-    local eyeY = headY - r * 0.05
-    BrushStrokes.inkDotStable(vg, eyeX, eyeY, r * 0.06,
-        InkPalette.indigo, 0.75, 22)
-
+    -- 暗/光双元素气场
+    BrushStrokes.inkWash(vg, sx, sy, r * 0.3, r * 2.0, InkPalette.dark, 0.12)
+    BrushStrokes.inkWash(vg, headX, headY, r * 0.1, r * 0.6, InkPalette.light, 0.10)
     nvgRestore(vg)
 end
 
--- 003 雷翼鹏 — 展翅猛禽，宽翼 + 尾羽
-BeastRenderer.shapes["003"] = function(vg, sx, sy, r, t, beast)
+-- 002 应龙 — 有翼金龙，鳞甲金褐
+BeastRenderer.shapes["002"] = function(vg, sx, sy, r, t, beast)
     local ink = InkPalette.inkStrong
-    local wingFlap = math.sin(t * 3) * r * 0.18
-
+    local gld = InkPalette.ochre
+    local wingFlap = math.sin(t * 2.5) * r * 0.2
     nvgSave(vg)
-    -- 身体：纺锤形
-    local body = {
-        { 0, -r * 0.35},
-        { r * 0.35, -r * 0.1},
-        { r * 0.3,  r * 0.2},
-        { 0,  r * 0.4},
-        {-r * 0.3,  r * 0.2},
-        {-r * 0.35, -r * 0.1},
-    }
-    drawWhiteSketch(vg, body, sx, sy, ink, 0.45, 0.55, 1.2, 103)
-
-    -- 双翼（粗→细飞白弧线）
     nvgLineCap(vg, NVG_ROUND)
+    -- 龙身
+    local body = {
+        {-r*0.5, r*0.15}, {-r*0.3, -r*0.4}, {r*0.2, -r*0.45},
+        {r*0.7, -r*0.2}, {r*0.65, r*0.15}, {r*0.2, r*0.4}, {-r*0.3, r*0.3},
+    }
+    drawWhiteSketch(vg, body, sx, sy, gld, 0.40, 0.55, 1.4, 102)
+    -- 双翼
     for side = -1, 1, 2 do
-        -- 主翼
         nvgBeginPath(vg)
-        nvgMoveTo(vg, sx + side * r * 0.2, sy - r * 0.05)
-        nvgQuadTo(vg,
-            sx + side * r * 0.9, sy - r * 0.7 - wingFlap,
-            sx + side * r * 1.3, sy - r * 0.15 + wingFlap * 0.5)
-        nvgStrokeWidth(vg, 2.2)
+        nvgMoveTo(vg, sx + side * r * 0.15, sy - r * 0.1)
+        nvgQuadTo(vg, sx + side * r * 1.0, sy - r * 0.8 - wingFlap, sx + side * r * 1.4, sy - r * 0.2 + wingFlap * 0.5)
+        nvgStrokeWidth(vg, 2.5)
+        nvgStrokeColor(vg, nvgRGBAf(gld.r, gld.g, gld.b, 0.50))
+        nvgStroke(vg)
+        nvgBeginPath(vg)
+        nvgMoveTo(vg, sx + side * r * 1.4, sy - r * 0.2 + wingFlap * 0.5)
+        nvgLineTo(vg, sx + side * r * 1.2, sy + r * 0.15)
+        nvgStrokeWidth(vg, 1.2)
+        nvgStrokeColor(vg, nvgRGBAf(gld.r, gld.g, gld.b, 0.35))
+        nvgStroke(vg)
+    end
+    -- 龙角
+    for side = -1, 1, 2 do
+        nvgBeginPath(vg)
+        nvgMoveTo(vg, sx + r * 0.55 + side * r * 0.08, sy - r * 0.35)
+        nvgLineTo(vg, sx + r * 0.5 + side * r * 0.1, sy - r * 0.65)
+        nvgStrokeWidth(vg, 1.5)
         nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.50))
         nvgStroke(vg)
-        -- 翼尖羽
-        nvgBeginPath(vg)
-        nvgMoveTo(vg, sx + side * r * 1.3, sy - r * 0.15 + wingFlap * 0.5)
-        nvgLineTo(vg, sx + side * r * 1.1, sy + r * 0.1)
-        nvgStrokeWidth(vg, 1.0)
-        nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.35))
-        nvgStroke(vg)
     end
-
-    -- 尾羽
-    for i = -1, 1 do
-        nvgBeginPath(vg)
-        nvgMoveTo(vg, sx + i * r * 0.1, sy + r * 0.35)
-        nvgLineTo(vg, sx + i * r * 0.15, sy + r * 0.75)
-        nvgStrokeWidth(vg, 1.0 + math.abs(i) * 0.3)
-        nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.40))
-        nvgStroke(vg)
-    end
-
-    -- 喙
-    nvgBeginPath(vg)
-    nvgMoveTo(vg, sx, sy - r * 0.35)
-    nvgLineTo(vg, sx + r * 0.12, sy - r * 0.55)
-    nvgLineTo(vg, sx - r * 0.05, sy - r * 0.42)
-    nvgFillColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.65))
-    nvgFill(vg)
-
-    -- 翎羽间电弧（"翎羽间电光缭绕"：翼间跳动的锯齿形闪电）
-    local sparkColor = InkPalette.azure
-    local sparkPhase = t * 8
-    for side = -1, 1, 2 do
-        local wingTipX = sx + side * r * 1.3
-        local wingTipY = sy - r * 0.15 + wingFlap * 0.5
-        local wingBaseX = sx + side * r * 0.2
-        local wingBaseY = sy - r * 0.05
-        -- 翼间电弧（锯齿折线）
-        local arcAlpha = 0.3 + math.sin(sparkPhase + side * 1.5) * 0.2
-        if arcAlpha > 0.15 then
-            nvgBeginPath(vg)
-            nvgMoveTo(vg, wingBaseX, wingBaseY)
-            local steps = 4
-            for s = 1, steps do
-                local frac = s / steps
-                local lx = wingBaseX + (wingTipX - wingBaseX) * frac
-                local ly = wingBaseY + (wingTipY - wingBaseY) * frac
-                local jitterX = math.sin(sparkPhase * 1.3 + s * 5 + side * 3) * r * 0.08
-                local jitterY = math.cos(sparkPhase * 1.7 + s * 7 + side * 2) * r * 0.1
-                nvgLineTo(vg, lx + jitterX, ly + jitterY)
-            end
-            nvgStrokeWidth(vg, 1.0)
-            nvgStrokeColor(vg, nvgRGBAf(sparkColor.r, sparkColor.g, sparkColor.b, arcAlpha))
-            nvgStroke(vg)
-        end
-        -- 翼尖电光火花
-        local tipSpark = 0.4 + math.sin(sparkPhase * 2 + side * 4) * 0.3
-        BrushStrokes.inkDotStable(vg, wingTipX, wingTipY, r * 0.04,
-            sparkColor, tipSpark, 30 + side)
-    end
-
-    -- 体表电弧晕光
-    local glowPulse = 0.06 + math.sin(t * 3) * 0.03
-    BrushStrokes.inkWash(vg, sx, sy, r * 0.2, r * 0.8,
-        sparkColor, glowPulse)
-
+    -- 龙目
+    local facing = beast.facing or 0
+    local ex = sx + math.cos(-facing) * r * 0.4
+    local ey = sy + math.sin(-facing) * r * 0.2 - r * 0.15
+    BrushStrokes.inkDotStable(vg, ex, ey, r * 0.06, InkPalette.thunder, 0.80, 12)
+    -- 雷电晕光
+    BrushStrokes.inkWash(vg, sx, sy, r * 0.2, r * 1.0, InkPalette.thunder, 0.08)
     nvgRestore(vg)
 end
 
--- 004 白泽 — 庄重神兽，方正身躯 + 头角 + 金辉
+-- 003 凤凰 — 五彩鸡形
+BeastRenderer.shapes["003"] = function(vg, sx, sy, r, t, beast)
+    local ink = InkPalette.inkStrong
+    nvgSave(vg)
+    -- 身体
+    local body = {
+        {r*0.3, -r*0.15}, {r*0.15, -r*0.45}, {-r*0.15, -r*0.45},
+        {-r*0.4, -r*0.25}, {-r*0.45, r*0.1}, {-r*0.2, r*0.35},
+        {r*0.1, r*0.35}, {r*0.3, r*0.1},
+    }
+    drawWhiteSketch(vg, body, sx, sy, ink, 0.35, 0.50, 1.3, 103)
+    -- 五彩尾羽
+    local colors = { InkPalette.cinnabar, InkPalette.gold, InkPalette.jade, InkPalette.azure, InkPalette.indigo }
+    nvgLineCap(vg, NVG_ROUND)
+    for i = 1, 5 do
+        local spread = (i - 3) * 0.25
+        local sway = math.sin(t * 2 + i * 0.8) * r * 0.08
+        nvgBeginPath(vg)
+        nvgMoveTo(vg, sx - r * 0.4, sy + r * 0.1)
+        nvgBezierTo(vg,
+            sx - r * 0.8, sy + spread * r + sway,
+            sx - r * 1.1, sy + spread * r * 1.5 + sway,
+            sx - r * 1.0, sy + spread * r * 2.0 + sway * 1.5)
+        nvgStrokeWidth(vg, 1.8 - math.abs(i - 3) * 0.2)
+        local c = colors[i]
+        nvgStrokeColor(vg, nvgRGBAf(c.r, c.g, c.b, 0.45))
+        nvgStroke(vg)
+    end
+    -- 冠羽
+    nvgBeginPath(vg)
+    nvgMoveTo(vg, sx, sy - r * 0.45)
+    nvgLineTo(vg, sx + r * 0.1, sy - r * 0.75)
+    nvgLineTo(vg, sx - r * 0.05, sy - r * 0.7)
+    nvgStrokeWidth(vg, 1.2)
+    nvgStrokeColor(vg, nvgRGBAf(InkPalette.cinnabar.r, InkPalette.cinnabar.g, InkPalette.cinnabar.b, 0.50))
+    nvgStroke(vg)
+    -- 眼
+    local facing = beast.facing or 0
+    local ex = sx + math.cos(-facing) * r * 0.2
+    local ey = sy + math.sin(-facing) * r * 0.1 - r * 0.2
+    BrushStrokes.inkDotStable(vg, ex, ey, r * 0.05, InkPalette.gold, 0.75, 33)
+    -- 五德光晕
+    BrushStrokes.inkWash(vg, sx, sy, r * 0.2, r * 0.9, InkPalette.gold, 0.10)
+    nvgRestore(vg)
+end
+
+-- 004 白泽 — 白毛龙角大犬，澄澈眼神
 BeastRenderer.shapes["004"] = function(vg, sx, sy, r, t, beast)
     local ink = InkPalette.inkStrong
-
+    local P = InkPalette.paper
     nvgSave(vg)
-    -- 身体：不规则方正体
     local body = {
-        {-r * 0.6, -r * 0.4},
-        {-r * 0.1, -r * 0.5},
-        { r * 0.5, -r * 0.45},
-        { r * 0.65, -r * 0.1},
-        { r * 0.6,  r * 0.35},
-        {-r * 0.1,  r * 0.4},
-        {-r * 0.55, r * 0.3},
-        {-r * 0.65, 0},
+        {-r*0.55, -r*0.35}, {-r*0.1, -r*0.5}, {r*0.45, -r*0.4},
+        {r*0.6, -r*0.05}, {r*0.5, r*0.3}, {-r*0.1, r*0.4},
+        {-r*0.5, r*0.25}, {-r*0.6, 0},
     }
-    drawWhiteSketch(vg, body, sx, sy, ink, 0.40, 0.60, 1.3, 104)
-
-    -- 头角（向上的弯曲线条）
+    drawWhiteSketch(vg, body, sx, sy, ink, 0.25, 0.55, 1.3, 104)
+    -- 白毛填充
+    nvgBeginPath(vg)
+    nvgEllipse(vg, sx, sy, r * 0.45, r * 0.35)
+    nvgFillColor(vg, nvgRGBAf(P.r, P.g, P.b, 0.30))
+    nvgFill(vg)
+    -- 龙角
     nvgLineCap(vg, NVG_ROUND)
     nvgBeginPath(vg)
     nvgMoveTo(vg, sx - r * 0.1, sy - r * 0.48)
@@ -777,8 +528,7 @@ BeastRenderer.shapes["004"] = function(vg, sx, sy, r, t, beast)
     nvgStrokeWidth(vg, 1.8)
     nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.55))
     nvgStroke(vg)
-
-    -- 四肢短线
+    -- 四肢
     local legs = {{-0.4, 0.35}, {0.3, 0.35}, {-0.35, 0.3}, {0.4, 0.3}}
     for _, l in ipairs(legs) do
         nvgBeginPath(vg)
@@ -788,416 +538,860 @@ BeastRenderer.shapes["004"] = function(vg, sx, sy, r, t, beast)
         nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.45))
         nvgStroke(vg)
     end
-
-    -- 角顶白芒（"角生白芒"：白色辐射光晕，脉动呼吸）
+    -- 角顶白芒
     local hornPulse = 0.20 + math.sin(t * 2.5) * 0.08
-    BrushStrokes.inkWash(vg, sx, sy - r * 0.9, r * 0.05, r * 0.45,
-        InkPalette.paper, hornPulse)
-    BrushStrokes.inkWash(vg, sx, sy - r * 0.9, r * 0.02, r * 0.2,
-        InkPalette.paper, hornPulse + 0.10)
-    -- 白芒光点
-    BrushStrokes.inkDotStable(vg, sx, sy - r * 0.9, r * 0.04,
-        InkPalette.paper, 0.75, 44)
-
+    BrushStrokes.inkWash(vg, sx, sy - r * 0.9, r * 0.05, r * 0.45, P, hornPulse)
+    BrushStrokes.inkDotStable(vg, sx, sy - r * 0.9, r * 0.04, P, 0.75, 44)
+    -- 澄澈双眼
+    local facing = beast.facing or 0
+    for side = -1, 1, 2 do
+        local ex = sx + math.cos(-facing) * r * 0.3 + side * r * 0.08
+        local ey = sy + math.sin(-facing) * r * 0.15 - r * 0.15
+        BrushStrokes.inkDotStable(vg, ex, ey, r * 0.05, InkPalette.azure, 0.70, 45 + side)
+    end
     nvgRestore(vg)
 end
 
--- 005 石灵 — 嶙峋岩形，皴法堆叠轮廓
+-- 005 白虎 — 纯白大虎，王字纹，金爪
 BeastRenderer.shapes["005"] = function(vg, sx, sy, r, t, beast)
     local ink = InkPalette.inkStrong
-    local seed = beast.facing and math.floor(beast.facing * 100) or 0
-
+    local P = InkPalette.paper
     nvgSave(vg)
-    -- 岩体轮廓：不规则多边形
-    local pts = {}
-    local numPts = 7
-    for i = 1, numPts do
-        local angle = (i - 1) / numPts * math.pi * 2 - math.pi / 2
-        local hash = (seed * 11 + i * 23) % 100
-        local rVar = r * (0.5 + hash / 200)
-        table.insert(pts, { math.cos(angle) * rVar, math.sin(angle) * rVar * 0.85 })
-    end
-    drawWhiteSketch(vg, pts, sx, sy, ink, 0.35, 0.55, 1.5, seed)
-
-    -- 内部皴法纹理
-    BrushStrokes.cunTexture(vg, sx, sy, r * 0.7,
-        ink, 0.28, seed, 6)
-
-    -- 岩缝中的翡翠微光（核心光点，标识生命）
-    local glowPulse = 0.15 + math.sin(t * 2.5) * 0.08
-    BrushStrokes.inkWash(vg, sx, sy - r * 0.1, r * 0.08, r * 0.3,
-        InkPalette.jade, glowPulse)
-
-    -- 眼睛：缝隙中的光点
-    local facing = beast.facing or 0
-    local ex = sx + math.cos(-facing) * r * 0.2
-    local ey = sy + math.sin(-facing) * r * 0.15 - r * 0.1
+    -- 虎躯
+    local body = {
+        {-r*0.6, -r*0.3}, {-r*0.2, -r*0.5}, {r*0.3, -r*0.5},
+        {r*0.65, -r*0.2}, {r*0.6, r*0.2}, {r*0.2, r*0.4},
+        {-r*0.3, r*0.4}, {-r*0.6, r*0.15},
+    }
+    drawWhiteSketch(vg, body, sx, sy, ink, 0.20, 0.55, 1.5, 105)
     nvgBeginPath(vg)
-    nvgCircle(vg, ex, ey, r * 0.06)
-    nvgFillColor(vg, nvgRGBAf(InkPalette.jade.r, InkPalette.jade.g, InkPalette.jade.b, 0.80))
+    nvgEllipse(vg, sx, sy, r * 0.5, r * 0.38)
+    nvgFillColor(vg, nvgRGBAf(P.r, P.g, P.b, 0.35))
     nvgFill(vg)
-
+    -- 四肢
+    nvgLineCap(vg, NVG_ROUND)
+    local limbs = {{-0.45,-0.25}, {0.4,-0.2}, {-0.4,0.3}, {0.45,0.3}}
+    for _, l in ipairs(limbs) do
+        nvgBeginPath(vg)
+        nvgMoveTo(vg, sx + l[1]*r, sy + l[2]*r)
+        nvgLineTo(vg, sx + l[1]*r*1.15, sy + r*0.6)
+        nvgStrokeWidth(vg, 2.2)
+        nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.40))
+        nvgStroke(vg)
+        BrushStrokes.inkDotStable(vg, sx + l[1]*r*1.15, sy + r*0.6, r*0.04, InkPalette.goldMetal, 0.60, 50 + _)
+    end
+    -- 额头"王"字纹
+    local hx, hy = sx, sy - r * 0.35
+    nvgBeginPath(vg)
+    nvgMoveTo(vg, hx - r*0.12, hy - r*0.08)
+    nvgLineTo(vg, hx + r*0.12, hy - r*0.08)
+    nvgMoveTo(vg, hx - r*0.1, hy)
+    nvgLineTo(vg, hx + r*0.1, hy)
+    nvgMoveTo(vg, hx - r*0.08, hy + r*0.08)
+    nvgLineTo(vg, hx + r*0.08, hy + r*0.08)
+    nvgMoveTo(vg, hx, hy - r*0.1)
+    nvgLineTo(vg, hx, hy + r*0.1)
+    nvgStrokeWidth(vg, 1.2)
+    nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.65))
+    nvgStroke(vg)
+    -- 虎眼
+    local facing = beast.facing or 0
+    for side = -1, 1, 2 do
+        local ex = sx + math.cos(-facing) * r * 0.3 + side * r * 0.1
+        local ey = sy + math.sin(-facing) * r * 0.1 - r * 0.25
+        BrushStrokes.inkDotStable(vg, ex, ey, r * 0.05, InkPalette.goldMetal, 0.80, 55 + side)
+    end
+    -- 金气晕光
+    BrushStrokes.inkWash(vg, sx, sy, r * 0.2, r * 0.8, InkPalette.goldMetal, 0.08)
     nvgRestore(vg)
 end
 
--- 006 水蛟 — 流线形水中龙，波浪身形
+-- 006 麒麟 — 鹿身牛尾马蹄，独角，金光
 BeastRenderer.shapes["006"] = function(vg, sx, sy, r, t, beast)
     local ink = InkPalette.inkStrong
-    local wave = math.sin(t * 2.5) * r * 0.12
-
+    local gld = InkPalette.gold
     nvgSave(vg)
+    -- 鹿身
+    local body = {
+        {-r*0.45, -r*0.3}, {0, -r*0.5}, {r*0.5, -r*0.35},
+        {r*0.55, r*0.1}, {r*0.3, r*0.35}, {-r*0.2, r*0.35},
+        {-r*0.5, r*0.1},
+    }
+    drawWhiteSketch(vg, body, sx, sy, ink, 0.30, 0.50, 1.3, 106)
+    -- 金光填充
+    nvgBeginPath(vg)
+    nvgEllipse(vg, sx, sy, r * 0.4, r * 0.3)
+    nvgFillColor(vg, nvgRGBAf(gld.r, gld.g, gld.b, 0.15))
+    nvgFill(vg)
+    -- 四蹄
     nvgLineCap(vg, NVG_ROUND)
-
-    -- 蛟身：流线贝塞尔（粗中段→细尾）
-    nvgBeginPath(vg)
-    nvgMoveTo(vg, sx - r * 0.85, sy + wave)
-    nvgBezierTo(vg,
-        sx - r * 0.3, sy - r * 0.3 + wave,
-        sx + r * 0.3, sy + r * 0.3 - wave,
-        sx + r * 0.85, sy + wave * 0.3)
-    nvgStrokeWidth(vg, r * 0.28)
-    nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.48))
-    nvgStroke(vg)
-
-    -- 龙角
-    nvgBeginPath(vg)
-    nvgMoveTo(vg, sx + r * 0.7, sy + wave * 0.3 - r * 0.1)
-    nvgLineTo(vg, sx + r * 0.65, sy + wave * 0.3 - r * 0.35)
-    nvgMoveTo(vg, sx + r * 0.55, sy + wave * 0.3 - r * 0.08)
-    nvgLineTo(vg, sx + r * 0.5, sy + wave * 0.3 - r * 0.3)
-    nvgStrokeWidth(vg, 1.2)
-    nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.50))
-    nvgStroke(vg)
-
-    -- 尾鳍（扇形扫出）
-    nvgBeginPath(vg)
-    nvgMoveTo(vg, sx - r * 0.8, sy + wave)
-    nvgQuadTo(vg, sx - r * 1.1, sy - r * 0.3, sx - r * 1.0, sy - r * 0.15)
-    nvgMoveTo(vg, sx - r * 0.8, sy + wave)
-    nvgQuadTo(vg, sx - r * 1.1, sy + r * 0.35, sx - r * 1.0, sy + r * 0.2)
-    nvgStrokeWidth(vg, 1.0)
-    nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.35))
-    nvgStroke(vg)
-
-    -- 鳞光如月（沿蛟身分布的月白色闪烁光点，模拟鳞片反光）
-    for i = 1, 6 do
-        local frac = (i - 0.5) / 6
-        local scaleX = sx + (frac * 2 - 1) * r * 0.75
-        local scaleY = sy + math.sin(frac * math.pi + t * 2.5) * r * 0.2
-        local shimmer = 0.25 + math.sin(t * 4 + i * 1.8) * 0.2
-        BrushStrokes.inkDotStable(vg, scaleX, scaleY, r * 0.03,
-            InkPalette.paper, shimmer, 60 + i)
+    local hooves = {{-0.35, 0.3}, {0.3, 0.3}, {-0.3, 0.25}, {0.35, 0.25}}
+    for i, h in ipairs(hooves) do
+        nvgBeginPath(vg)
+        nvgMoveTo(vg, sx + h[1]*r, sy + h[2]*r)
+        nvgLineTo(vg, sx + h[1]*r, sy + r*0.6)
+        nvgStrokeWidth(vg, 1.8)
+        nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.45))
+        nvgStroke(vg)
     end
-
-    -- 水花晕
-    BrushStrokes.inkWash(vg, sx, sy, r * 0.3, r * 1.3,
-        InkPalette.azure, 0.10)
-
+    -- 独角
+    nvgBeginPath(vg)
+    nvgMoveTo(vg, sx, sy - r * 0.5)
+    nvgLineTo(vg, sx, sy - r * 0.95)
+    nvgStrokeWidth(vg, 2.0)
+    nvgStrokeColor(vg, nvgRGBAf(gld.r, gld.g, gld.b, 0.55))
+    nvgStroke(vg)
+    BrushStrokes.inkDotStable(vg, sx, sy - r * 0.95, r * 0.04, gld, 0.70, 66)
+    -- 牛尾
+    local tailSway = math.sin(t * 2) * r * 0.08
+    nvgBeginPath(vg)
+    nvgMoveTo(vg, sx - r * 0.45, sy + r * 0.05)
+    nvgQuadTo(vg, sx - r * 0.7, sy + r * 0.1 + tailSway, sx - r * 0.65, sy + r * 0.3)
+    nvgStrokeWidth(vg, 1.5)
+    nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.40))
+    nvgStroke(vg)
+    -- 柔和金光晕
+    local pulse = 0.10 + math.sin(t * 2) * 0.04
+    BrushStrokes.inkWash(vg, sx, sy, r * 0.3, r * 1.5, gld, pulse)
     nvgRestore(vg)
 end
 
--- 007 风鸣 — 无形之鸟，唯闻其声，不见其影（半透明气旋+音波纹）
+------------------------------------------------------------
+-- SR · 十异 形态
+------------------------------------------------------------
+
+-- 007 饕餮 — 羊身人面(胸前), 腋下双目
 BeastRenderer.shapes["007"] = function(vg, sx, sy, r, t, beast)
     local ink = InkPalette.inkStrong
-
     nvgSave(vg)
-
-    -- 气旋核心：极淡的椭圆体（几乎透明的风之凝聚）
-    local breathe = math.sin(t * 3) * r * 0.05
-    local coreR = r * 0.35 + breathe
+    local body = {
+        {-r*0.5, -r*0.35}, {0, -r*0.5}, {r*0.5, -r*0.35},
+        {r*0.55, r*0.15}, {r*0.3, r*0.4}, {-r*0.3, r*0.4}, {-r*0.55, r*0.15},
+    }
+    drawWhiteSketch(vg, body, sx, sy, ink, 0.40, 0.55, 1.4, 107)
+    -- 胸前人面
     nvgBeginPath(vg)
-    nvgEllipse(vg, sx, sy, coreR, coreR * 0.8)
-    nvgFillColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.12))
+    nvgCircle(vg, sx, sy + r * 0.05, r * 0.18)
+    nvgFillColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.30))
     nvgFill(vg)
-    nvgStrokeWidth(vg, 0.8)
-    nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.25))
+    nvgStrokeWidth(vg, 1.0)
+    nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.45))
     nvgStroke(vg)
-
-    -- 旋风线条（围绕核心的弧形飞白，表达风的旋转）
-    nvgLineCap(vg, NVG_ROUND)
-    for i = 1, 4 do
-        local baseAngle = (i - 1) / 4 * math.pi * 2 + t * 2.5
-        local dist = r * (0.45 + i * 0.12)
-        local arcLen = math.pi * 0.6
-        local startA = baseAngle
-        local endA = baseAngle + arcLen
-        nvgBeginPath(vg)
-        nvgArc(vg, sx, sy, dist, startA, endA, NVG_CW)
-        local alpha = 0.35 - i * 0.06
-        nvgStrokeWidth(vg, 1.8 - i * 0.3)
-        nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, alpha))
-        nvgStroke(vg)
+    -- 虎齿
+    nvgBeginPath(vg)
+    nvgMoveTo(vg, sx - r*0.06, sy + r*0.15)
+    nvgLineTo(vg, sx - r*0.03, sy + r*0.22)
+    nvgMoveTo(vg, sx + r*0.06, sy + r*0.15)
+    nvgLineTo(vg, sx + r*0.03, sy + r*0.22)
+    nvgStrokeWidth(vg, 1.0)
+    nvgStrokeColor(vg, nvgRGBAf(InkPalette.paper.r, InkPalette.paper.g, InkPalette.paper.b, 0.70))
+    nvgStroke(vg)
+    -- 腋下双目
+    for side = -1, 1, 2 do
+        local ex = sx + side * r * 0.35
+        local ey = sy - r * 0.05
+        BrushStrokes.inkDotStable(vg, ex, ey, r * 0.05, InkPalette.cinnabar, 0.70, 70 + side)
     end
-
-    -- 音波纹（同心弧线，模拟鸣叫声波，仅绘制前方扇区）
-    local facing = beast.facing or 0
-    local wavePhase = t * 4
-    for i = 1, 3 do
-        local waveR = r * (0.6 + i * 0.35) + math.sin(wavePhase + i) * r * 0.05
-        local halfArc = math.pi / 5
-        nvgBeginPath(vg)
-        nvgArc(vg, sx, sy, waveR, -facing - halfArc, -facing + halfArc, NVG_CW)
-        local alpha = 0.30 - i * 0.08
-        nvgStrokeWidth(vg, 1.0)
-        nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, alpha))
-        nvgStroke(vg)
-    end
-
-    -- 风之眼（核心位置一点微光，标识生命）
-    local eyeX = sx + math.cos(-facing) * r * 0.15
-    local eyeY = sy + math.sin(-facing) * r * 0.1
-    BrushStrokes.inkDotStable(vg, eyeX, eyeY, r * 0.05,
-        InkPalette.jade, 0.55, 77)
-
-    -- 风场淡晕
-    BrushStrokes.inkWash(vg, sx, sy, r * 0.2, r * 0.7,
-        InkPalette.jade, 0.06)
-
+    -- 暗气场
+    BrushStrokes.inkWash(vg, sx, sy, r * 0.2, r * 0.8, InkPalette.dark, 0.10)
     nvgRestore(vg)
 end
 
--- 008 土偶 — 泥塑成形，笨拙忠厚的人形泥俑
+-- 008 穷奇 — 牛形刺猬毛
 BeastRenderer.shapes["008"] = function(vg, sx, sy, r, t, beast)
-    local ink = InkPalette.inkMedium
-    local earthColor = InkPalette.inkLight
-
+    local ink = InkPalette.inkStrong
     nvgSave(vg)
-    nvgLineCap(vg, NVG_ROUND)
-
-    -- 躯干（宽厚的梯形/桶状泥体，朴拙感）
-    local torso = {
-        {-r * 0.35, -r * 0.3},
-        { r * 0.35, -r * 0.3},
-        { r * 0.4,   r * 0.2},
-        { r * 0.3,   r * 0.4},
-        {-r * 0.3,   r * 0.4},
-        {-r * 0.4,   r * 0.2},
+    local body = {
+        {-r*0.55, -r*0.3}, {0, -r*0.5}, {r*0.55, -r*0.3},
+        {r*0.6, r*0.15}, {r*0.3, r*0.4}, {-r*0.3, r*0.4}, {-r*0.6, r*0.15},
     }
-    drawWhiteSketch(vg, torso, sx, sy, ink, 0.38, 0.55, 1.6, 108)
+    drawWhiteSketch(vg, body, sx, sy, ink, 0.42, 0.55, 1.4, 108)
+    -- 刺猬毛（放射状短线）
+    nvgLineCap(vg, NVG_ROUND)
+    for i = 1, 12 do
+        local angle = (i / 12) * math.pi * 2
+        local baseR = r * 0.45
+        local tipR = r * (0.6 + ((i * 17) % 20) / 100)
+        nvgBeginPath(vg)
+        nvgMoveTo(vg, sx + math.cos(angle) * baseR, sy + math.sin(angle) * baseR * 0.75)
+        nvgLineTo(vg, sx + math.cos(angle) * tipR, sy + math.sin(angle) * tipR * 0.75)
+        nvgStrokeWidth(vg, 1.2)
+        nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.40))
+        nvgStroke(vg)
+    end
+    -- 牛角
+    for side = -1, 1, 2 do
+        nvgBeginPath(vg)
+        nvgMoveTo(vg, sx + side * r * 0.2, sy - r * 0.45)
+        nvgQuadTo(vg, sx + side * r * 0.35, sy - r * 0.7, sx + side * r * 0.25, sy - r * 0.75)
+        nvgStrokeWidth(vg, 1.5)
+        nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.50))
+        nvgStroke(vg)
+    end
+    -- 眼
+    local facing = beast.facing or 0
+    local ex = sx + math.cos(-facing) * r * 0.25
+    local ey = sy + math.sin(-facing) * r * 0.15 - r * 0.2
+    BrushStrokes.inkDotStable(vg, ex, ey, r * 0.06, InkPalette.cinnabar, 0.70, 80)
+    nvgRestore(vg)
+end
 
-    -- 泥裂纹（皴法纹理，表现泥土质感）
-    BrushStrokes.cunTexture(vg, sx, sy + r * 0.05, r * 0.35,
-        ink, 0.20, 108, 5)
+-- 009 梼杌 — 似虎似犬，蓬乱长毛，面目模糊
+BeastRenderer.shapes["009"] = function(vg, sx, sy, r, t, beast)
+    local ink = InkPalette.inkMedium
+    local seed = 109
+    nvgSave(vg)
+    local body = {
+        {-r*0.6, -r*0.3}, {-r*0.2, -r*0.5}, {r*0.3, -r*0.45},
+        {r*0.6, -r*0.15}, {r*0.55, r*0.25}, {r*0.1, r*0.4},
+        {-r*0.3, r*0.35}, {-r*0.55, r*0.1},
+    }
+    drawWhiteSketch(vg, body, sx, sy, ink, 0.45, 0.50, 1.6, seed)
+    -- 蓬乱毛发（放射弧线）
+    nvgLineCap(vg, NVG_ROUND)
+    for i = 1, 10 do
+        local angle = (i / 10) * math.pi * 2
+        local dist = r * 0.4
+        local len = r * (0.2 + ((seed * 3 + i * 19) % 30) / 100)
+        local sway = math.sin(t * 2 + i) * r * 0.03
+        nvgBeginPath(vg)
+        nvgMoveTo(vg, sx + math.cos(angle) * dist, sy + math.sin(angle) * dist * 0.8)
+        nvgLineTo(vg, sx + math.cos(angle) * (dist + len) + sway, sy + math.sin(angle) * (dist + len) * 0.8)
+        nvgStrokeWidth(vg, 1.0)
+        nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.30))
+        nvgStroke(vg)
+    end
+    -- 面目模糊（墨晕遮蔽面部区域）
+    BrushStrokes.inkWash(vg, sx + r * 0.15, sy - r * 0.2, r * 0.1, r * 0.3, ink, 0.25)
+    -- 暗气场
+    BrushStrokes.inkWash(vg, sx, sy, r * 0.2, r * 0.9, InkPalette.dark, 0.08)
+    nvgRestore(vg)
+end
 
-    -- 头部（圆钝的泥球，比身体稍小，位于肩膀上方）
-    local headY = sy - r * 0.48
+-- 010 混沌 — 黄囊，六足四翼，无面目
+BeastRenderer.shapes["010"] = function(vg, sx, sy, r, t, beast)
+    local chaos = InkPalette.chaos
+    local ink = InkPalette.inkStrong
+    nvgSave(vg)
+    -- 圆囊身体
     nvgBeginPath(vg)
-    nvgEllipse(vg, sx, headY, r * 0.22, r * 0.2)
+    nvgCircle(vg, sx, sy, r * 0.5)
+    nvgFillColor(vg, nvgRGBAf(chaos.r, chaos.g, chaos.b, 0.40))
+    nvgFill(vg)
+    nvgStrokeWidth(vg, 1.5)
+    nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.45))
+    nvgStroke(vg)
+    -- 六足
+    nvgLineCap(vg, NVG_ROUND)
+    for i = 1, 6 do
+        local angle = (i / 6) * math.pi * 2 + t * 0.5
+        local sway = math.sin(t * 3 + i * 1.1) * r * 0.04
+        nvgBeginPath(vg)
+        nvgMoveTo(vg, sx + math.cos(angle) * r * 0.45, sy + math.sin(angle) * r * 0.45)
+        nvgLineTo(vg, sx + math.cos(angle) * r * 0.75 + sway, sy + math.sin(angle) * r * 0.75)
+        nvgStrokeWidth(vg, 1.5)
+        nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.40))
+        nvgStroke(vg)
+    end
+    -- 四翼（小弧线）
+    for i = 1, 4 do
+        local angle = (i / 4) * math.pi * 2 + math.pi / 4
+        local flutter = math.sin(t * 4 + i) * r * 0.06
+        nvgBeginPath(vg)
+        local bx = sx + math.cos(angle) * r * 0.35
+        local by = sy + math.sin(angle) * r * 0.35
+        nvgMoveTo(vg, bx, by)
+        nvgQuadTo(vg, bx + math.cos(angle) * r * 0.3, by + math.sin(angle) * r * 0.3 + flutter,
+            bx + math.cos(angle + 0.3) * r * 0.25, by + math.sin(angle + 0.3) * r * 0.25)
+        nvgStrokeWidth(vg, 1.0)
+        nvgStrokeColor(vg, nvgRGBAf(chaos.r, chaos.g, chaos.b, 0.35))
+        nvgStroke(vg)
+    end
+    -- 赤红光晕
+    local pulse = 0.12 + math.sin(t * 2) * 0.05
+    BrushStrokes.inkWash(vg, sx, sy, r * 0.15, r * 0.7, InkPalette.cinnabar, pulse)
+    nvgRestore(vg)
+end
+
+-- 011 九婴 — 九头蛇龙
+BeastRenderer.shapes["011"] = function(vg, sx, sy, r, t, beast)
+    local ink = InkPalette.inkStrong
+    nvgSave(vg)
+    -- 中心躯体
+    nvgBeginPath(vg)
+    nvgEllipse(vg, sx, sy, r * 0.4, r * 0.35)
     nvgFillColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.40))
     nvgFill(vg)
     nvgStrokeWidth(vg, 1.3)
     nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.50))
     nvgStroke(vg)
-
-    -- 双眼（简朴的凹陷点，泥塑的刻痕感）
-    for side = -1, 1, 2 do
-        nvgBeginPath(vg)
-        nvgCircle(vg, sx + side * r * 0.09, headY - r * 0.02, r * 0.04)
-        nvgFillColor(vg, nvgRGBAf(InkPalette.inkDark.r, InkPalette.inkDark.g, InkPalette.inkDark.b, 0.65))
-        nvgFill(vg)
-    end
-
-    -- 双臂（粗短的泥柱，微微下垂，笨拙感）
-    local armSway = math.sin(t * 1.5) * r * 0.03
-    for side = -1, 1, 2 do
-        local shoulderX = sx + side * r * 0.38
-        local shoulderY = sy - r * 0.2
-        local handX = shoulderX + side * r * 0.2
-        local handY = shoulderY + r * 0.4 + armSway
-        nvgBeginPath(vg)
-        nvgMoveTo(vg, shoulderX, shoulderY)
-        nvgQuadTo(vg,
-            shoulderX + side * r * 0.15, shoulderY + r * 0.15,
-            handX, handY)
-        nvgStrokeWidth(vg, r * 0.14)
-        nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.42))
-        nvgStroke(vg)
-        -- 泥拳（圆形末端）
-        nvgBeginPath(vg)
-        nvgCircle(vg, handX, handY, r * 0.08)
-        nvgFillColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.38))
-        nvgFill(vg)
-    end
-
-    -- 双腿（短粗的泥桩）
-    for side = -1, 1, 2 do
-        local legX = sx + side * r * 0.18
-        local legTopY = sy + r * 0.35
-        local legBotY = legTopY + r * 0.3
-        nvgBeginPath(vg)
-        nvgMoveTo(vg, legX, legTopY)
-        nvgLineTo(vg, legX + side * r * 0.03, legBotY)
-        nvgStrokeWidth(vg, r * 0.14)
-        nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.42))
-        nvgStroke(vg)
-    end
-
-    -- 土气晕光（大地气息，暖色微弱光晕）
-    local earthPulse = 0.06 + math.sin(t * 2) * 0.02
-    BrushStrokes.inkWash(vg, sx, sy, r * 0.15, r * 0.6,
-        earthColor, earthPulse)
-
-    nvgRestore(vg)
-end
-
--- 009 冰蚕 — 微小蚕形，晶莹剔透，吐丝结茧（体小如拇指）
-BeastRenderer.shapes["009"] = function(vg, sx, sy, r, t, beast)
-    local ink = InkPalette.inkStrong
-
-    nvgSave(vg)
-
-    -- 蚕身：由多个椭圆节段组成的柔软蠕动体
-    local segments = 5
-    local segLen = r * 0.22
-    local wriggle = math.sin(t * 3) * r * 0.04
+    -- 九头颈
+    local headColors = {
+        InkPalette.azure, InkPalette.azure, InkPalette.dark, InkPalette.inkMedium,
+        InkPalette.cinnabar, InkPalette.flame, InkPalette.gold, InkPalette.paper,
+        InkPalette.goldMetal,
+    }
     nvgLineCap(vg, NVG_ROUND)
-
-    -- 每一节身体
-    for i = 1, segments do
-        local frac = (i - 1) / (segments - 1) -- 0~1
-        local offsetX = (frac - 0.5) * r * 1.0
-        local offsetY = math.sin(frac * math.pi * 2 + t * 3) * wriggle
-        local segR = r * (0.18 - math.abs(frac - 0.5) * 0.12) -- 中间粗两头细
+    for i = 1, 9 do
+        local angle = (i / 9) * math.pi * 2 - math.pi / 2
+        local sway = math.sin(t * 2.5 + i * 0.7) * r * 0.06
+        local neckLen = r * 0.55
+        local headX = sx + math.cos(angle) * neckLen + sway
+        local headY = sy + math.sin(angle) * neckLen * 0.8
         nvgBeginPath(vg)
-        nvgEllipse(vg, sx + offsetX, sy + offsetY, segR, segR * 0.7)
-        -- 晶莹半透明填充（冰蓝色调）
-        nvgFillColor(vg, nvgRGBAf(InkPalette.azure.r, InkPalette.azure.g, InkPalette.azure.b, 0.15 + frac * 0.05))
-        nvgFill(vg)
-        nvgStrokeWidth(vg, 0.8)
+        nvgMoveTo(vg, sx + math.cos(angle) * r * 0.3, sy + math.sin(angle) * r * 0.25)
+        nvgLineTo(vg, headX, headY)
+        nvgStrokeWidth(vg, 1.8)
         nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.35))
         nvgStroke(vg)
+        local c = headColors[i]
+        BrushStrokes.inkDotStable(vg, headX, headY, r * 0.06, c, 0.55, 110 + i)
     end
-
-    -- 头部（最前端稍大的圆）
-    local headX = sx + r * 0.5
-    local headY = sy + math.sin(t * 3) * wriggle
-    nvgBeginPath(vg)
-    nvgCircle(vg, headX, headY, r * 0.12)
-    nvgFillColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.40))
-    nvgFill(vg)
-
-    -- 眼睛（微小冰蓝光点）
-    local facing = beast.facing or 0
-    BrushStrokes.inkDotStable(vg,
-        headX + math.cos(-facing) * r * 0.06,
-        headY + math.sin(-facing) * r * 0.04,
-        r * 0.03, InkPalette.azure, 0.70, 99)
-
-    -- 寒丝（头部向前延伸的细线，模拟吐丝）
-    local silkSway = math.sin(t * 2) * r * 0.06
-    nvgBeginPath(vg)
-    nvgMoveTo(vg, headX + r * 0.1, headY)
-    nvgBezierTo(vg,
-        headX + r * 0.3, headY - r * 0.1 + silkSway,
-        headX + r * 0.5, headY + silkSway,
-        headX + r * 0.6, headY - r * 0.05 + silkSway)
-    nvgStrokeWidth(vg, 0.5)
-    nvgStrokeColor(vg, nvgRGBAf(InkPalette.azure.r, InkPalette.azure.g, InkPalette.azure.b, 0.30))
-    nvgStroke(vg)
-
-    -- 冰晶微光（体表折射光效）
-    for i = 1, 3 do
-        local sparkX = sx + (i / 4 - 0.5) * r * 0.8
-        local sparkY = sy + math.sin(t * 4 + i * 2) * r * 0.06
-        local sparkAlpha = 0.3 + math.sin(t * 5 + i) * 0.15
-        BrushStrokes.inkDotStable(vg, sparkX, sparkY, r * 0.025,
-            InkPalette.azure, sparkAlpha, 90 + i)
-    end
-
-    -- 冰气淡晕
-    BrushStrokes.inkWash(vg, sx, sy, r * 0.15, r * 0.5,
-        InkPalette.azure, 0.06)
-
+    -- 水火交侵晕光
+    BrushStrokes.inkWash(vg, sx - r*0.3, sy, r*0.1, r*0.5, InkPalette.azure, 0.08)
+    BrushStrokes.inkWash(vg, sx + r*0.3, sy, r*0.1, r*0.5, InkPalette.cinnabar, 0.08)
     nvgRestore(vg)
 end
 
--- 010 墨鸦 — 漆黑如墨，飞则流焰，落则成灰（鸦形鸟，火焰尾迹）
-BeastRenderer.shapes["010"] = function(vg, sx, sy, r, t, beast)
-    local ink = InkPalette.inkStrong
-
+-- 012 猰貐 — 蛇身人面，灰黑
+BeastRenderer.shapes["012"] = function(vg, sx, sy, r, t, beast)
+    local ink = InkPalette.inkDark
+    local wave = math.sin(t * 2) * r * 0.12
     nvgSave(vg)
-
-    -- 鸦身：紧凑的鸟形轮廓（比雷翼小，更圆润）
-    local body = {
-        { r * 0.35, -r * 0.15},  -- 喙根
-        { r * 0.2, -r * 0.4},    -- 头顶
-        {-r * 0.1, -r * 0.42},   -- 后脑
-        {-r * 0.4, -r * 0.3},    -- 背部
-        {-r * 0.5, -r * 0.05},   -- 尾根
-        {-r * 0.35, r * 0.25},   -- 腹尾
-        { 0, r * 0.3},           -- 腹部
-        { r * 0.25, r * 0.15},   -- 胸部
-    }
-    -- 浓墨填充（漆黑），描边也深
-    drawWhiteSketch(vg, body, sx, sy, ink, 0.65, 0.75, 1.4, 110)
-
     nvgLineCap(vg, NVG_ROUND)
-
-    -- 尖喙（朱砂色尖端，表示火性）
-    local facing = beast.facing or 0
-    local beakTipX = sx + r * 0.55
-    local beakTipY = sy - r * 0.05
+    -- 蛇身
     nvgBeginPath(vg)
-    nvgMoveTo(vg, sx + r * 0.35, sy - r * 0.12)
-    nvgLineTo(vg, beakTipX, beakTipY)
-    nvgLineTo(vg, sx + r * 0.35, sy + r * 0.02)
-    nvgFillColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.70))
+    nvgMoveTo(vg, sx - r * 0.8, sy + wave)
+    nvgBezierTo(vg, sx - r * 0.25, sy - r * 0.35 + wave, sx + r * 0.25, sy + r * 0.35 - wave, sx + r * 0.8, sy - wave * 0.3)
+    nvgStrokeWidth(vg, r * 0.3)
+    nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.50))
+    nvgStroke(vg)
+    -- 人面（头部）
+    local headX = sx + r * 0.8
+    local headY = sy - wave * 0.3
+    nvgBeginPath(vg)
+    nvgCircle(vg, headX, headY, r * 0.2)
+    nvgFillColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.45))
     nvgFill(vg)
+    nvgStrokeWidth(vg, 1.0)
+    nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.55))
+    nvgStroke(vg)
+    -- 扭曲面容（交叉线暗示）
+    nvgBeginPath(vg)
+    nvgMoveTo(vg, headX - r*0.06, headY - r*0.04)
+    nvgLineTo(vg, headX + r*0.06, headY + r*0.04)
+    nvgMoveTo(vg, headX + r*0.06, headY - r*0.04)
+    nvgLineTo(vg, headX - r*0.06, headY + r*0.04)
+    nvgStrokeWidth(vg, 0.8)
+    nvgStrokeColor(vg, nvgRGBAf(InkPalette.paper.r, InkPalette.paper.g, InkPalette.paper.b, 0.50))
+    nvgStroke(vg)
+    -- 暗气场
+    BrushStrokes.inkWash(vg, sx, sy, r * 0.2, r * 0.8, ink, 0.10)
+    nvgRestore(vg)
+end
 
-    -- 翅膀（收拢状态，两片弧线紧贴身体）
-    for side = -1, 1, 2 do
-        local wingFlutter = math.sin(t * 2.5 + side) * r * 0.04
+-- 013 毕方 — 鹤形单足，青身赤纹白喙
+BeastRenderer.shapes["013"] = function(vg, sx, sy, r, t, beast)
+    local ink = InkPalette.inkStrong
+    local azure = InkPalette.azure
+    nvgSave(vg)
+    -- 鹤身
+    local body = {
+        {r*0.2, -r*0.3}, {r*0.05, -r*0.5}, {-r*0.2, -r*0.45},
+        {-r*0.35, -r*0.15}, {-r*0.3, r*0.2}, {0, r*0.3}, {r*0.2, r*0.1},
+    }
+    drawWhiteSketch(vg, body, sx, sy, azure, 0.30, 0.50, 1.3, 113)
+    -- 赤色花纹
+    nvgLineCap(vg, NVG_ROUND)
+    for i = 1, 4 do
+        local fx = sx + (i / 5 - 0.5) * r * 0.5
+        local fy = sy + math.sin(i * 1.5) * r * 0.15
         nvgBeginPath(vg)
-        nvgMoveTo(vg, sx - r * 0.1, sy + side * r * 0.05)
-        nvgBezierTo(vg,
-            sx - r * 0.3, sy + side * r * 0.3 + wingFlutter,
-            sx - r * 0.5, sy + side * r * 0.2 + wingFlutter,
-            sx - r * 0.55, sy + side * r * 0.05)
+        nvgMoveTo(vg, fx - r * 0.05, fy)
+        nvgLineTo(vg, fx + r * 0.05, fy + r * 0.03)
+        nvgStrokeWidth(vg, 1.0)
+        nvgStrokeColor(vg, nvgRGBAf(InkPalette.cinnabar.r, InkPalette.cinnabar.g, InkPalette.cinnabar.b, 0.40))
+        nvgStroke(vg)
+    end
+    -- 单足（跳跃感）
+    local hop = math.abs(math.sin(t * 3)) * r * 0.05
+    nvgBeginPath(vg)
+    nvgMoveTo(vg, sx, sy + r * 0.3)
+    nvgLineTo(vg, sx, sy + r * 0.7 - hop)
+    nvgStrokeWidth(vg, 2.0)
+    nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.50))
+    nvgStroke(vg)
+    -- 白喙
+    nvgBeginPath(vg)
+    nvgMoveTo(vg, sx + r * 0.2, sy - r * 0.3)
+    nvgLineTo(vg, sx + r * 0.4, sy - r * 0.35)
+    nvgLineTo(vg, sx + r * 0.2, sy - r * 0.25)
+    nvgFillColor(vg, nvgRGBAf(InkPalette.paper.r, InkPalette.paper.g, InkPalette.paper.b, 0.65))
+    nvgFill(vg)
+    -- 翅膀
+    nvgBeginPath(vg)
+    nvgMoveTo(vg, sx - r * 0.15, sy - r * 0.1)
+    nvgQuadTo(vg, sx - r * 0.6, sy - r * 0.5, sx - r * 0.7, sy - r * 0.1)
+    nvgStrokeWidth(vg, 1.5)
+    nvgStrokeColor(vg, nvgRGBAf(azure.r, azure.g, azure.b, 0.40))
+    nvgStroke(vg)
+    -- 火焰气场
+    BrushStrokes.inkWash(vg, sx, sy + r * 0.5, r * 0.1, r * 0.4, InkPalette.cinnabar, 0.12)
+    nvgRestore(vg)
+end
+
+-- 014 乘黄 — 金黄狐形，背生弯角
+BeastRenderer.shapes["014"] = function(vg, sx, sy, r, t, beast)
+    local ink = InkPalette.inkStrong
+    local gld = InkPalette.gold
+    nvgSave(vg)
+    local body = {
+        {-r*0.55, r*0.1}, {-r*0.3, -r*0.35}, {r*0.1, -r*0.4},
+        {r*0.6, -r*0.15}, {r*0.55, r*0.15}, {r*0.1, r*0.3}, {-r*0.3, r*0.25},
+    }
+    drawWhiteSketch(vg, body, sx, sy, gld, 0.35, 0.50, 1.3, 114)
+    -- 双耳
+    nvgLineCap(vg, NVG_ROUND)
+    for side = -1, 1, 2 do
+        nvgBeginPath(vg)
+        nvgMoveTo(vg, sx + side * r * 0.15, sy - r * 0.35)
+        nvgLineTo(vg, sx + side * r * 0.22, sy - r * 0.55)
+        nvgStrokeWidth(vg, 1.2)
+        nvgStrokeColor(vg, nvgRGBAf(gld.r, gld.g, gld.b, 0.50))
+        nvgStroke(vg)
+    end
+    -- 背部弯角
+    for side = -1, 1, 2 do
+        nvgBeginPath(vg)
+        nvgMoveTo(vg, sx + side * r * 0.05, sy - r * 0.35)
+        nvgQuadTo(vg, sx + side * r * 0.15, sy - r * 0.65, sx + side * r * 0.25, sy - r * 0.6)
         nvgStrokeWidth(vg, 1.5)
         nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.50))
         nvgStroke(vg)
     end
-
-    -- 火焰尾迹（"飞则流焰" — 尾部拖出朱砂焰光）
-    local flamePhase = t * 5
-    for i = 1, 4 do
-        local frac = i / 4
-        local flameX = sx - r * (0.5 + frac * 0.6)
-        local flameY = sy + math.sin(flamePhase + i * 1.5) * r * 0.12
-        local flameR = r * (0.12 - frac * 0.02)
-        local flameAlpha = 0.45 - frac * 0.10
-        nvgBeginPath(vg)
-        nvgCircle(vg, flameX, flameY, flameR)
-        nvgFillColor(vg, nvgRGBAf(
-            InkPalette.cinnabar.r, InkPalette.cinnabar.g, InkPalette.cinnabar.b,
-            flameAlpha))
-        nvgFill(vg)
-    end
-    -- 焰尾连线（飞白朱砂弧）
+    -- 尾巴
+    local tailSway = math.sin(t * 2.5) * r * 0.08
     nvgBeginPath(vg)
-    nvgMoveTo(vg, sx - r * 0.45, sy)
-    nvgBezierTo(vg,
-        sx - r * 0.7, sy + math.sin(flamePhase) * r * 0.1,
-        sx - r * 0.9, sy - math.sin(flamePhase * 0.7) * r * 0.08,
-        sx - r * 1.1, sy + math.sin(flamePhase * 1.3) * r * 0.06)
-    nvgStrokeWidth(vg, 1.5)
-    nvgStrokeColor(vg, nvgRGBAf(
-        InkPalette.cinnabar.r, InkPalette.cinnabar.g, InkPalette.cinnabar.b, 0.30))
+    nvgMoveTo(vg, sx - r * 0.5, sy + r * 0.05)
+    nvgBezierTo(vg, sx - r * 0.8, sy - r * 0.1 + tailSway, sx - r * 0.9, sy - r * 0.3 + tailSway, sx - r * 0.7, sy - r * 0.35)
+    nvgStrokeWidth(vg, 2.0)
+    nvgStrokeColor(vg, nvgRGBAf(gld.r, gld.g, gld.b, 0.40))
     nvgStroke(vg)
+    -- 眼
+    local facing = beast.facing or 0
+    local ex = sx + math.cos(-facing) * r * 0.3
+    local ey = sy + math.sin(-facing) * r * 0.15 - r * 0.1
+    BrushStrokes.inkDotStable(vg, ex, ey, r * 0.05, gld, 0.70, 140)
+    -- 金光迹
+    BrushStrokes.inkWash(vg, sx, sy, r * 0.15, r * 0.6, gld, 0.08)
+    nvgRestore(vg)
+end
 
-    -- 眼睛：火红光点
-    local eyeX = sx + r * 0.2
-    local eyeY = sy - r * 0.25
+-- 015 文鳐鱼 — 鲤鱼鸟翼，白头红嘴
+BeastRenderer.shapes["015"] = function(vg, sx, sy, r, t, beast)
+    local ink = InkPalette.inkStrong
+    local azure = InkPalette.azure
+    nvgSave(vg)
+    nvgLineCap(vg, NVG_ROUND)
+    -- 鱼身
+    local body = {
+        {-r*0.6, 0}, {-r*0.3, -r*0.3}, {r*0.2, -r*0.3},
+        {r*0.55, -r*0.1}, {r*0.55, r*0.1}, {r*0.2, r*0.3},
+        {-r*0.3, r*0.3},
+    }
+    drawWhiteSketch(vg, body, sx, sy, azure, 0.30, 0.50, 1.2, 115)
+    -- 苍色纹路
+    for i = 1, 5 do
+        local fx = sx + (i / 6 - 0.5) * r * 0.8
+        local fy = sy + math.sin(i * 2 + t) * r * 0.08
+        nvgBeginPath(vg)
+        nvgMoveTo(vg, fx, fy - r * 0.1)
+        nvgLineTo(vg, fx + r * 0.03, fy + r * 0.1)
+        nvgStrokeWidth(vg, 0.7)
+        nvgStrokeColor(vg, nvgRGBAf(azure.r, azure.g, azure.b, 0.30))
+        nvgStroke(vg)
+    end
+    -- 鸟翼
+    local wingFlap = math.sin(t * 3) * r * 0.12
+    for side = -1, 1, 2 do
+        nvgBeginPath(vg)
+        nvgMoveTo(vg, sx, sy + side * r * 0.1)
+        nvgQuadTo(vg, sx - r * 0.3, sy + side * r * 0.5 + wingFlap, sx - r * 0.5, sy + side * r * 0.2)
+        nvgStrokeWidth(vg, 1.5)
+        nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.40))
+        nvgStroke(vg)
+    end
+    -- 白头
     nvgBeginPath(vg)
-    nvgCircle(vg, eyeX, eyeY, r * 0.055)
-    nvgFillColor(vg, nvgRGBAf(
-        InkPalette.cinnabar.r, InkPalette.cinnabar.g, InkPalette.cinnabar.b, 0.85))
+    nvgCircle(vg, sx + r * 0.45, sy, r * 0.14)
+    nvgFillColor(vg, nvgRGBAf(InkPalette.paper.r, InkPalette.paper.g, InkPalette.paper.b, 0.50))
     nvgFill(vg)
+    -- 红嘴
+    nvgBeginPath(vg)
+    nvgMoveTo(vg, sx + r * 0.55, sy - r * 0.03)
+    nvgLineTo(vg, sx + r * 0.7, sy)
+    nvgLineTo(vg, sx + r * 0.55, sy + r * 0.03)
+    nvgFillColor(vg, nvgRGBAf(InkPalette.cinnabar.r, InkPalette.cinnabar.g, InkPalette.cinnabar.b, 0.60))
+    nvgFill(vg)
+    -- 鱼尾
+    nvgBeginPath(vg)
+    nvgMoveTo(vg, sx - r * 0.55, sy)
+    nvgLineTo(vg, sx - r * 0.8, sy - r * 0.2)
+    nvgMoveTo(vg, sx - r * 0.55, sy)
+    nvgLineTo(vg, sx - r * 0.8, sy + r * 0.2)
+    nvgStrokeWidth(vg, 1.2)
+    nvgStrokeColor(vg, nvgRGBAf(azure.r, azure.g, azure.b, 0.40))
+    nvgStroke(vg)
+    nvgRestore(vg)
+end
 
-    -- 墨气（浓重的黑色气场）
-    BrushStrokes.inkWash(vg, sx, sy, r * 0.25, r * 0.7,
-        ink, 0.10)
+-- 016 九尾狐 — 狐形六尾(SR)
+BeastRenderer.shapes["016"] = function(vg, sx, sy, r, t, beast)
+    local ink = InkPalette.inkStrong
+    local cin = InkPalette.cinnabar
+    nvgSave(vg)
+    local body = {
+        {-r*0.5, r*0.1}, {-r*0.25, -r*0.35}, {r*0.15, -r*0.4},
+        {r*0.6, -r*0.15}, {r*0.55, r*0.15}, {r*0.1, r*0.3}, {-r*0.25, r*0.25},
+    }
+    drawWhiteSketch(vg, body, sx, sy, ink, 0.40, 0.55, 1.3, 116)
+    -- 双耳
+    nvgLineCap(vg, NVG_ROUND)
+    for side = -1, 1, 2 do
+        nvgBeginPath(vg)
+        nvgMoveTo(vg, sx + side * r * 0.15 + r * 0.2, sy - r * 0.35)
+        nvgLineTo(vg, sx + side * r * 0.2 + r * 0.2, sy - r * 0.55)
+        nvgStrokeWidth(vg, 1.2)
+        nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.45))
+        nvgStroke(vg)
+    end
+    -- 六条尾巴（SR级别）
+    for i = 1, 6 do
+        local spread = (i - 3.5) * 0.2
+        local sway = math.sin(t * 2 + i * 0.9) * r * 0.1
+        nvgBeginPath(vg)
+        nvgMoveTo(vg, sx - r * 0.45, sy + r * 0.05)
+        nvgBezierTo(vg,
+            sx - r * 0.8, sy + spread * r + sway,
+            sx - r * 1.05, sy + spread * r * 1.3 + sway,
+            sx - r * 0.9, sy + spread * r * 1.8 + sway)
+        nvgStrokeWidth(vg, 1.8)
+        nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.35))
+        nvgStroke(vg)
+        BrushStrokes.inkDotStable(vg,
+            sx - r * 0.9, sy + spread * r * 1.8 + sway,
+            r * 0.03, cin, 0.40, 160 + i)
+    end
+    -- 眼（朱砂）
+    local facing = beast.facing or 0
+    local ex = sx + math.cos(-facing) * r * 0.35
+    local ey = sy + math.sin(-facing) * r * 0.15 - r * 0.1
+    BrushStrokes.inkDotStable(vg, ex, ey, r * 0.05, cin, 0.75, 169)
+    -- 暗焰气场
+    BrushStrokes.inkWash(vg, sx, sy, r * 0.15, r * 0.6, cin, 0.08)
+    nvgRestore(vg)
+end
 
+------------------------------------------------------------
+-- R · 八兆 形态
+------------------------------------------------------------
+
+-- 017 帝江 — 小型混沌幼体
+BeastRenderer.shapes["017"] = function(vg, sx, sy, r, t, beast)
+    local chaos = InkPalette.chaos
+    local ink = InkPalette.inkMedium
+    nvgSave(vg)
+    nvgBeginPath(vg)
+    nvgCircle(vg, sx, sy, r * 0.4)
+    nvgFillColor(vg, nvgRGBAf(chaos.r, chaos.g, chaos.b, 0.35))
+    nvgFill(vg)
+    nvgStrokeWidth(vg, 1.0)
+    nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.40))
+    nvgStroke(vg)
+    nvgLineCap(vg, NVG_ROUND)
+    for i = 1, 6 do
+        local angle = (i / 6) * math.pi * 2 + t * 0.8
+        nvgBeginPath(vg)
+        nvgMoveTo(vg, sx + math.cos(angle) * r * 0.35, sy + math.sin(angle) * r * 0.35)
+        nvgLineTo(vg, sx + math.cos(angle) * r * 0.55, sy + math.sin(angle) * r * 0.55)
+        nvgStrokeWidth(vg, 1.0)
+        nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.35))
+        nvgStroke(vg)
+    end
+    for i = 1, 4 do
+        local angle = (i / 4) * math.pi * 2 + math.pi / 4 + t * 0.5
+        local flutter = math.sin(t * 4 + i) * r * 0.04
+        nvgBeginPath(vg)
+        nvgArc(vg, sx, sy, r * 0.35, angle, angle + 0.5, NVG_CW)
+        nvgStrokeWidth(vg, 0.8)
+        nvgStrokeColor(vg, nvgRGBAf(chaos.r, chaos.g, chaos.b, 0.30))
+        nvgStroke(vg)
+    end
+    BrushStrokes.inkWash(vg, sx, sy, r * 0.1, r * 0.4, InkPalette.cinnabar, 0.08)
+    nvgRestore(vg)
+end
+
+-- 018 当康 — 小猪形，獠牙
+BeastRenderer.shapes["018"] = function(vg, sx, sy, r, t, beast)
+    local ink = InkPalette.inkStrong
+    local ochre = InkPalette.ochre
+    nvgSave(vg)
+    local body = {
+        {-r*0.4, -r*0.2}, {0, -r*0.35}, {r*0.4, -r*0.25},
+        {r*0.45, r*0.1}, {r*0.25, r*0.3}, {-r*0.25, r*0.3}, {-r*0.45, r*0.1},
+    }
+    drawWhiteSketch(vg, body, sx, sy, ochre, 0.35, 0.50, 1.2, 118)
+    -- 短腿
+    nvgLineCap(vg, NVG_ROUND)
+    local legs = {{-0.3, 0.25}, {0.2, 0.25}, {-0.25, 0.2}, {0.25, 0.2}}
+    for _, l in ipairs(legs) do
+        nvgBeginPath(vg)
+        nvgMoveTo(vg, sx + l[1]*r, sy + l[2]*r)
+        nvgLineTo(vg, sx + l[1]*r, sy + r*0.45)
+        nvgStrokeWidth(vg, 1.5)
+        nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.40))
+        nvgStroke(vg)
+    end
+    -- 獠牙
+    nvgBeginPath(vg)
+    nvgMoveTo(vg, sx + r*0.3, sy - r*0.15)
+    nvgLineTo(vg, sx + r*0.35, sy - r*0.3)
+    nvgMoveTo(vg, sx + r*0.35, sy - r*0.1)
+    nvgLineTo(vg, sx + r*0.42, sy - r*0.25)
+    nvgStrokeWidth(vg, 1.2)
+    nvgStrokeColor(vg, nvgRGBAf(InkPalette.paper.r, InkPalette.paper.g, InkPalette.paper.b, 0.60))
+    nvgStroke(vg)
+    -- 猪鼻（圆点）
+    local facing = beast.facing or 0
+    local nx = sx + math.cos(-facing) * r * 0.3
+    local ny = sy + math.sin(-facing) * r * 0.1
+    BrushStrokes.inkDotStable(vg, nx, ny, r * 0.06, ink, 0.45, 180)
+    nvgRestore(vg)
+end
+
+-- 019 狸力 — 猪形，鸡爪
+BeastRenderer.shapes["019"] = function(vg, sx, sy, r, t, beast)
+    local ink = InkPalette.inkStrong
+    local ochre = InkPalette.ochre
+    nvgSave(vg)
+    local body = {
+        {-r*0.45, -r*0.25}, {0, -r*0.4}, {r*0.45, -r*0.25},
+        {r*0.5, r*0.1}, {r*0.25, r*0.3}, {-r*0.25, r*0.3}, {-r*0.5, r*0.1},
+    }
+    drawWhiteSketch(vg, body, sx, sy, ochre, 0.35, 0.50, 1.3, 119)
+    nvgLineCap(vg, NVG_ROUND)
+    -- 鸡爪脚
+    local claws = {{-0.25, 0.3}, {0.25, 0.3}}
+    for _, c in ipairs(claws) do
+        local bx = sx + c[1]*r
+        local by = sy + c[2]*r
+        nvgBeginPath(vg)
+        nvgMoveTo(vg, bx, by)
+        nvgLineTo(vg, bx, by + r*0.25)
+        nvgMoveTo(vg, bx, by + r*0.25)
+        nvgLineTo(vg, bx - r*0.06, by + r*0.32)
+        nvgMoveTo(vg, bx, by + r*0.25)
+        nvgLineTo(vg, bx + r*0.06, by + r*0.32)
+        nvgStrokeWidth(vg, 1.3)
+        nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.45))
+        nvgStroke(vg)
+    end
+    -- 眼
+    local facing = beast.facing or 0
+    local ex = sx + math.cos(-facing) * r * 0.25
+    local ey = sy + math.sin(-facing) * r * 0.1 - r * 0.1
+    BrushStrokes.inkDotStable(vg, ex, ey, r * 0.05, ink, 0.55, 190)
+    nvgRestore(vg)
+end
+
+-- 020 旋龟 — 龟壳鸟头蛇尾
+BeastRenderer.shapes["020"] = function(vg, sx, sy, r, t, beast)
+    local ink = InkPalette.inkStrong
+    nvgSave(vg)
+    -- 龟壳
+    local shell = {
+        {-r*0.2, -r*0.45}, {r*0.3, -r*0.4}, {r*0.5, -r*0.05},
+        {r*0.4, r*0.3}, {-r*0.1, r*0.4}, {-r*0.45, r*0.2}, {-r*0.5, -r*0.1},
+    }
+    drawWhiteSketch(vg, shell, sx, sy, ink, 0.38, 0.55, 1.4, 120)
+    BrushStrokes.cunTexture(vg, sx, sy, r * 0.35, ink, 0.18, 120, 4)
+    nvgLineCap(vg, NVG_ROUND)
+    -- 鸟头
+    local facing = beast.facing or 0
+    local headX = sx + math.cos(-facing) * r * 0.5
+    local headY = sy + math.sin(-facing) * r * 0.3
+    nvgBeginPath(vg)
+    nvgCircle(vg, headX, headY, r * 0.13)
+    nvgFillColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.40))
+    nvgFill(vg)
+    -- 鸟喙
+    nvgBeginPath(vg)
+    nvgMoveTo(vg, headX + math.cos(-facing) * r * 0.12, headY + math.sin(-facing) * r * 0.08)
+    nvgLineTo(vg, headX + math.cos(-facing) * r * 0.25, headY + math.sin(-facing) * r * 0.12)
+    nvgStrokeWidth(vg, 1.2)
+    nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.55))
+    nvgStroke(vg)
+    -- 蛇尾
+    local tailWave = math.sin(t * 2.5) * r * 0.08
+    nvgBeginPath(vg)
+    nvgMoveTo(vg, sx - r * 0.4, sy + r * 0.15)
+    nvgBezierTo(vg, sx - r * 0.65, sy + r * 0.1 + tailWave, sx - r * 0.75, sy - r * 0.05 + tailWave, sx - r * 0.65, sy - r * 0.1)
+    nvgStrokeWidth(vg, 1.5)
+    nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.40))
+    nvgStroke(vg)
+    -- 眼
+    BrushStrokes.inkDotStable(vg, headX, headY - r * 0.03, r * 0.04, InkPalette.paper, 0.70, 200)
+    nvgRestore(vg)
+end
+
+-- 021 并封 — 黑猪，前后双头
+BeastRenderer.shapes["021"] = function(vg, sx, sy, r, t, beast)
+    local ink = InkPalette.inkDark
+    nvgSave(vg)
+    local body = {
+        {-r*0.35, -r*0.3}, {0, -r*0.4}, {r*0.35, -r*0.3},
+        {r*0.4, r*0.1}, {r*0.2, r*0.35}, {-r*0.2, r*0.35}, {-r*0.4, r*0.1},
+    }
+    drawWhiteSketch(vg, body, sx, sy, ink, 0.50, 0.60, 1.4, 121)
+    nvgLineCap(vg, NVG_ROUND)
+    -- 前头
+    local headR = r * 0.18
+    nvgBeginPath(vg)
+    nvgCircle(vg, sx + r * 0.45, sy, headR)
+    nvgFillColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.55))
+    nvgFill(vg)
+    BrushStrokes.inkDotStable(vg, sx + r * 0.48, sy - r * 0.03, r * 0.04, InkPalette.paper, 0.65, 210)
+    -- 后头
+    nvgBeginPath(vg)
+    nvgCircle(vg, sx - r * 0.45, sy, headR)
+    nvgFillColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.55))
+    nvgFill(vg)
+    BrushStrokes.inkDotStable(vg, sx - r * 0.48, sy - r * 0.03, r * 0.04, InkPalette.paper, 0.65, 211)
+    -- 短腿
+    local legs = {{-0.2, 0.3}, {0.2, 0.3}}
+    for _, l in ipairs(legs) do
+        nvgBeginPath(vg)
+        nvgMoveTo(vg, sx + l[1]*r, sy + l[2]*r)
+        nvgLineTo(vg, sx + l[1]*r, sy + r*0.5)
+        nvgStrokeWidth(vg, 1.5)
+        nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.45))
+        nvgStroke(vg)
+    end
+    -- 暗气场
+    BrushStrokes.inkWash(vg, sx, sy, r * 0.15, r * 0.6, ink, 0.08)
+    nvgRestore(vg)
+end
+
+-- 022 何罗鱼 — 一头十身
+BeastRenderer.shapes["022"] = function(vg, sx, sy, r, t, beast)
+    local ink = InkPalette.inkStrong
+    local azure = InkPalette.azure
+    nvgSave(vg)
+    nvgLineCap(vg, NVG_ROUND)
+    -- 十条身体（扇形展开）
+    for i = 1, 10 do
+        local spread = (i - 5.5) * 0.15
+        local sway = math.sin(t * 2 + i * 0.6) * r * 0.05
+        local tailX = sx - r * 0.7
+        local tailY = sy + spread * r * 1.5 + sway
+        nvgBeginPath(vg)
+        nvgMoveTo(vg, sx + r * 0.15, sy)
+        nvgBezierTo(vg,
+            sx - r * 0.1, sy + spread * r * 0.5 + sway,
+            sx - r * 0.4, sy + spread * r + sway,
+            tailX, tailY)
+        nvgStrokeWidth(vg, 1.5 - math.abs(i - 5.5) * 0.1)
+        nvgStrokeColor(vg, nvgRGBAf(azure.r, azure.g, azure.b, 0.30))
+        nvgStroke(vg)
+    end
+    -- 鱼头
+    nvgBeginPath(vg)
+    nvgCircle(vg, sx + r * 0.25, sy, r * 0.18)
+    nvgFillColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.45))
+    nvgFill(vg)
+    nvgStrokeWidth(vg, 1.2)
+    nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.50))
+    nvgStroke(vg)
+    BrushStrokes.inkDotStable(vg, sx + r * 0.3, sy - r * 0.04, r * 0.04, InkPalette.paper, 0.65, 220)
+    nvgRestore(vg)
+end
+
+-- 023 化蛇 — 人面豺身，收翅蛇行
+BeastRenderer.shapes["023"] = function(vg, sx, sy, r, t, beast)
+    local ink = InkPalette.inkStrong
+    local wave = math.sin(t * 3) * r * 0.06
+    nvgSave(vg)
+    -- 豺身（低矮匍匐）
+    local body = {
+        {-r*0.5, -r*0.15}, {-r*0.2, -r*0.3}, {r*0.2, -r*0.3},
+        {r*0.5, -r*0.1}, {r*0.45, r*0.15}, {0, r*0.2}, {-r*0.45, r*0.15},
+    }
+    drawWhiteSketch(vg, body, sx, sy + wave, ink, 0.38, 0.50, 1.2, 123)
+    nvgLineCap(vg, NVG_ROUND)
+    -- 收拢翅膀
+    for side = -1, 1, 2 do
+        nvgBeginPath(vg)
+        nvgMoveTo(vg, sx - r * 0.1, sy + side * r * 0.05 + wave)
+        nvgQuadTo(vg, sx - r * 0.3, sy + side * r * 0.2 + wave, sx - r * 0.35, sy + side * r * 0.08 + wave)
+        nvgStrokeWidth(vg, 1.0)
+        nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.35))
+        nvgStroke(vg)
+    end
+    -- 人面
+    local headX = sx + r * 0.4
+    local headY = sy - r * 0.15 + wave
+    nvgBeginPath(vg)
+    nvgCircle(vg, headX, headY, r * 0.14)
+    nvgFillColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.35))
+    nvgFill(vg)
+    BrushStrokes.inkDotStable(vg, headX + r * 0.04, headY - r * 0.02, r * 0.03, InkPalette.paper, 0.60, 230)
+    -- 水气晕
+    BrushStrokes.inkWash(vg, sx, sy, r * 0.1, r * 0.4, InkPalette.azure, 0.06)
+    nvgRestore(vg)
+end
+
+-- 024 蜚 — 白头独眼牛形蛇尾
+BeastRenderer.shapes["024"] = function(vg, sx, sy, r, t, beast)
+    local ink = InkPalette.inkStrong
+    local poison = InkPalette.poison
+    nvgSave(vg)
+    local body = {
+        {-r*0.5, -r*0.3}, {0, -r*0.45}, {r*0.5, -r*0.3},
+        {r*0.55, r*0.1}, {r*0.3, r*0.35}, {-r*0.3, r*0.35}, {-r*0.55, r*0.1},
+    }
+    drawWhiteSketch(vg, body, sx, sy, ink, 0.38, 0.50, 1.4, 124)
+    nvgLineCap(vg, NVG_ROUND)
+    -- 四蹄
+    local legs = {{-0.35, 0.3}, {0.3, 0.3}, {-0.3, 0.25}, {0.35, 0.25}}
+    for _, l in ipairs(legs) do
+        nvgBeginPath(vg)
+        nvgMoveTo(vg, sx + l[1]*r, sy + l[2]*r)
+        nvgLineTo(vg, sx + l[1]*r, sy + r*0.55)
+        nvgStrokeWidth(vg, 1.5)
+        nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.40))
+        nvgStroke(vg)
+    end
+    -- 白头
+    nvgBeginPath(vg)
+    nvgCircle(vg, sx + r * 0.45, sy - r * 0.2, r * 0.16)
+    nvgFillColor(vg, nvgRGBAf(InkPalette.paper.r, InkPalette.paper.g, InkPalette.paper.b, 0.50))
+    nvgFill(vg)
+    nvgStrokeWidth(vg, 1.0)
+    nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.45))
+    nvgStroke(vg)
+    -- 独眼
+    BrushStrokes.inkDotStable(vg, sx + r * 0.47, sy - r * 0.22, r * 0.06, InkPalette.cinnabar, 0.75, 240)
+    -- 蛇尾
+    local tailWave = math.sin(t * 2.5) * r * 0.08
+    nvgBeginPath(vg)
+    nvgMoveTo(vg, sx - r * 0.5, sy + r * 0.1)
+    nvgBezierTo(vg, sx - r * 0.7, sy + tailWave, sx - r * 0.85, sy - r * 0.1 + tailWave, sx - r * 0.75, sy - r * 0.2)
+    nvgStrokeWidth(vg, 1.8)
+    nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, 0.40))
+    nvgStroke(vg)
+    -- 毒气晕
+    local toxPulse = 0.08 + math.sin(t * 2) * 0.04
+    BrushStrokes.inkWash(vg, sx, sy, r * 0.2, r * 0.8, poison, toxPulse)
     nvgRestore(vg)
 end
 

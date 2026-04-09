@@ -102,7 +102,7 @@ SkillSystem.SKILLS = {
             duration = 5.0,
             autoBackstab = true,  -- 绕到背后自动触发背刺状态
         },
-        canInterrupt = true,      -- 可打断蓄力（如噬天深渊吞噬）
+        canInterrupt = true,      -- 可打断蓄力（如饕餮无尽贪食）
     },
 
     qusanfa = {
@@ -148,10 +148,10 @@ function SkillSystem.isUnlocked(skillId)
         if level >= 3 then return true, nil end
         return false, "需达到境界3（调灵者）"
     elseif skillId == "baoyanfu" then
-        -- 捕获噬天1次
+        -- 捕获应龙1次
         local entry = GameState.data.bestiary["002"]
         if entry and entry.captured and entry.count >= 1 then return true, nil end
-        return false, "需捕获噬天1次"
+        return false, "需捕获应龙1次"
     elseif skillId == "fengyinzhen" then
         -- 境界4（封灵师）
         local level = GameState.getSealerLevel()
@@ -166,10 +166,10 @@ function SkillSystem.isUnlocked(skillId)
         end
         return false, "需捕获任意SSR异兽1次"
     elseif skillId == "qusanfa" then
-        -- 被墨鸦攻击后成功撤退3次
+        -- 被异兽攻击后成功撤退3次
         local count = GameState.data.moyaRetreatCount or 0
         if count >= 3 then return true, nil end
-        return false, "需被墨鸦攻击后成功撤退" .. (3 - count) .. "次"
+        return false, "需被异兽攻击后成功撤退" .. (3 - count) .. "次"
     end
     return false, "未知技能"
 end
@@ -582,7 +582,7 @@ function SkillSystem._useQusanfa(skill, px, py, beasts)
     -- 清除玩家debuff
     EventBus.emit("player_debuffs_cleared", { radius = radius })
 
-    -- 清除墨鸦墨染
+    -- 清除异兽墨染/地面debuff
     EventBus.emit("ink_cleared", { x = px, y = py, radius = radius })
 
     -- 净化瘴气

@@ -33,8 +33,7 @@ function EvacuationSystem.startEvacuation(point, options)
     EvacuationSystem.evacuateTimer = 0
     EvacuationSystem.currentPoint = point
     local duration = point.duration or 3
-    -- 土偶灵契效果：1.5秒
-    if options.hasTuou then duration = 1.5 end
+    -- TODO Phase 2: 封印被动撤离加速
     -- collapse阶段：1.5秒
     if options.isCollapse then duration = 1.5 end
     -- 疾风符：2秒
@@ -110,7 +109,7 @@ function EvacuationSystem.checkContractStability(contracts, soulCharmCount, hasI
             local reduction = ({ R = 0.05, SR = 0.20, SSR = 0.30 })[contract.quality] or 0
             triggerChance = math.max(0, triggerChance - reduction)
         end
-        -- 冰蚕被动效果：全灵契不稳定率-10%
+        -- TODO Phase 2: 封印被动灵契稳定加成
         if hasIceSilk then
             triggerChance = math.max(0, triggerChance - 0.10)
         end
