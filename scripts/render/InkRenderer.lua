@@ -15,28 +15,28 @@ local imgLoaded = false
 --- 图标贴图路径映射
 local IMAGE_PATHS = {
     -- 资源（道具图标类 - 透明底+手写感+色彩克制风格）
-    lingshi    = "image/item_lingshi_20260408114828.png",
-    tianjing   = "image/item_tianjing_20260408114734.png",
-    shouhun    = "image/item_shouhun_20260408114716.png",
-    traceAsh   = "image/item_traceash_20260408114753.png",
-    mirrorSand = "image/item_mirrorsand_20260408114731.png",
-    soulCharm  = "image/item_soulcharm_20260408114727.png",
-    beastEye   = "image/item_beasteye_20260408114715.png",
-    sealEcho   = "image/item_sealecho_20260408114753.png",
+    lingshi    = "image/items/item_lingshi_20260408114828.png",
+    tianjing   = "image/items/item_tianjing_20260408114734.png",
+    shouhun    = "image/items/item_shouhun_20260408114716.png",
+    traceAsh   = "image/items/item_traceash_20260408114753.png",
+    mirrorSand = "image/items/item_mirrorsand_20260408114731.png",
+    soulCharm  = "image/items/item_soulcharm_20260408114727.png",
+    beastEye   = "image/items/item_beasteye_20260408114715.png",
+    sealEcho   = "image/items/item_sealecho_20260408114753.png",
     -- 线索（透明底+道具图标类风格）
-    footprint  = "image/clue_footprint_20260408114944.png",
-    resonance  = "image/clue_resonance_20260408115002.png",
-    nest       = "image/clue_nest_20260408114937.png",
-    scentMark  = "image/clue_scentmark_20260408114954.png",
+    footprint  = "image/clues/clue_footprint_20260408114944.png",
+    resonance  = "image/clues/clue_resonance_20260408115002.png",
+    nest       = "image/clues/clue_nest_20260408114937.png",
+    scentMark  = "image/clues/clue_scentmark_20260408114954.png",
     -- 撤离点（透明底）
-    evac       = "image/evac_portal_20260408115151.png",
+    evac       = "image/evacuation/evac_portal_20260408115151.png",
     -- 异兽与实体（透明底+白描+飞白风格）
-    beastFox   = "image/beast_fox_20260408115328.png",
-    beastStone = "image/beast_stone_20260408115133.png",
-    player     = "image/player_sealer_20260408115130.png",
+    beastFox   = "image/beasts/beast_fox_20260408115328.png",
+    beastStone = "image/beasts/beast_stone_20260408115133.png",
+    player     = "image/players/player_sealer_20260408115130.png",
     -- 环境地貌纹理（透明底+水墨晕染质感）
-    envGrass   = "image/env_grass_20260408115153.png",
-    envRock    = "image/env_rock_20260408115121.png",
+    envGrass   = "image/environment/env_grass_20260408115153.png",
+    envRock    = "image/environment/env_rock_20260408115121.png",
 }
 
 --- 加载所有贴图（仅调用一次）
