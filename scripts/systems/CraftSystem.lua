@@ -11,6 +11,10 @@ CraftSystem.recipes = {
     { id = "rushWard",  name = "疾风符",   tier = nil,  category = "item",   cost = { lingshi = 8, traceAsh = 3 } },
     { id = "fogMap",    name = "迷雾残图", tier = nil,  category = "item",   cost = { shouhun = 2 } },
     { id = "sealEcho",  name = "封印回响", tier = nil,  category = "item",   cost = { shouhun = 3, tianjing = 1 } },
+    -- 恢复类道具
+    { id = "lingquanWan", name = "灵泉丸", tier = nil, category = "recovery", cost = { lingshi = 6 },                          yield = 2 },
+    { id = "jianzhulu",   name = "绛珠露", tier = nil, category = "recovery", cost = { lingshi = 10, shouhun = 2 } },
+    { id = "fusufu",      name = "复苏符", tier = nil, category = "recovery", cost = { lingshi = 8, shouhun = 3, traceAsh = 2 } },
 }
 
 function CraftSystem.canCraft(recipeId, inventory)
@@ -33,7 +37,8 @@ function CraftSystem.craft(recipeId, inventory)
     for res, amount in pairs(recipe.cost) do
         inventory[res] = inventory[res] - amount
     end
-    inventory[recipeId] = (inventory[recipeId] or 0) + 1
+    local yield = recipe.yield or 1
+    inventory[recipeId] = (inventory[recipeId] or 0) + yield
     EventBus.emit("resource_changed", "craft", recipeId)
     return true
 end

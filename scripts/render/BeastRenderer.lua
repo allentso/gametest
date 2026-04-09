@@ -95,11 +95,27 @@ function BeastRenderer.draw(vg, beast, sx, sy, ppu, t)
         BeastRenderer.drawDefaultShape(vg, sx, sy, r, t, beast)
     end
 
-    -- 状态特效
+    -- 状态特效 + 头顶图标
     if beast.aiState == "alert" then
         BeastRenderer.drawAlertMark(vg, sx, sy, r, t)
+    elseif beast.aiState == "warn" then
+        BeastRenderer.drawWarnMark(vg, sx, sy, r, t)
+    elseif beast.aiState == "chase" then
+        BeastRenderer.drawChaseMark(vg, sx, sy, r, t)
+    elseif beast.aiState == "stunned" or beast.aiState == "frozen" then
+        BeastRenderer.drawStunnedMark(vg, sx, sy, r, t)
     elseif beast.aiState == "flee" then
         BeastRenderer.drawSpeedLines(vg, beast, sx, sy, r, t)
+    end
+
+    -- 异兽HP条（有HP且非满血时显示）
+    if beast.hp and beast.maxHP and beast.hp < beast.maxHP and beast.hp > 0 then
+        BeastRenderer.drawBeastHPBar(vg, beast, sx, sy, r)
+    end
+
+    -- 攻击预警视觉（warmup阶段）
+    if beast.aiState == "attack" and beast.attackTimer and beast.attackTimer > 0 then
+        BeastRenderer.drawAttackWarning(vg, beast, sx, sy, r, ppu, t)
     end
 
     nvgRestore(vg)
@@ -220,6 +236,262 @@ function BeastRenderer.drawSpeedLines(vg, beast, sx, sy, r, t)
         nvgStroke(vg)
     end
     nvgRestore(vg)
+end
+
+--- 警告标记 "×"（warn状态，领地警告）
+function BeastRenderer.drawWarnMark(vg, sx, sy, r, t)
+    local shake = math.sin(t * 6) * r * 0.08
+    local markY = sy - r * 1.5 + shake
+    local markSize = r * 0.35
+
+    nvgSave(vg)
+    nvgLineCap(vg, NVG_ROUND)
+    -- 墨色叉号
+    local ink = InkPalette.inkStrong
+    local alpha = 0.75 + math.sin(t * 3) * 0.15
+    nvgStrokeWidth(vg, 2.0)
+    nvgStrokeColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, alpha))
+    nvgBeginPath(vg)
+    nvgMoveTo(vg, sx - markSize, markY - markSize)
+    nvgLineTo(vg, sx + markSize, markY + markSize)
+    nvgStroke(vg)
+    nvgBeginPath(vg)
+    nvgMoveTo(vg, sx + markSize, markY - markSize)
+    nvgLineTo(vg, sx - markSize, markY + markSize)
+    nvgStroke(vg)
+    nvgRestore(vg)
+end
+
+--- 追击标记 "火焰"图标（chase状态）
+function BeastRenderer.drawChaseMark(vg, sx, sy, r, t)
+    local markY = sy - r * 1.6
+    local flicker = math.sin(t * 8) * r * 0.05
+
+    nvgSave(vg)
+    -- 火焰形状（简化水墨火焰：3个尖瓣）
+    local cin = InkPalette.cinnabar
+    local alpha = 0.70 + math.sin(t * 5) * 0.20
+
+    for i = -1, 1 do
+        local fx = sx + i * r * 0.15
+        local baseY = markY + r * 0.2
+        local tipY = markY - r * 0.25 + flicker * (1 + math.abs(i) * 0.5)
+        nvgBeginPath(vg)
+        nvgMoveTo(vg, fx - r * 0.08, baseY)
+        nvgQuadTo(vg, fx - r * 0.02, markY + r * 0.05, fx, tipY)
+        nvgQuadTo(vg, fx + r * 0.02, markY + r * 0.05, fx + r * 0.08, baseY)
+        nvgClosePath(vg)
+        nvgFillColor(vg, nvgRGBAf(cin.r, cin.g, cin.b, alpha - math.abs(i) * 0.15))
+        nvgFill(vg)
+    end
+    nvgRestore(vg)
+end
+
+--- 眩晕/冻结标记 "ZZZ"（stunned/frozen状态）
+function BeastRenderer.drawStunnedMark(vg, sx, sy, r, t)
+    local markY = sy - r * 1.5
+    local bob = math.sin(t * 2) * r * 0.06
+
+    nvgSave(vg)
+    nvgFontFace(vg, "sans")
+    nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+
+    -- 三个"Z"，从小到大渐远
+    local ink = InkPalette.inkMedium
+    for i = 1, 3 do
+        local zx = sx + (i - 1) * r * 0.25 - r * 0.15
+        local zy = markY - (i - 1) * r * 0.2 + bob * i * 0.3
+        local fontSize = r * (0.5 + i * 0.15)
+        local alpha = 0.55 - (i - 1) * 0.12
+        nvgFontSize(vg, fontSize)
+        nvgFillColor(vg, nvgRGBAf(ink.r, ink.g, ink.b, alpha))
+        nvgText(vg, zx, zy, "Z")
+    end
+    nvgRestore(vg)
+end
+
+--- 异兽HP条（伤血后显示在身体下方）
+function BeastRenderer.drawBeastHPBar(vg, beast, sx, sy, r)
+    local barW = r * 1.6
+    local barH = 3
+    local barX = sx - barW * 0.5
+    local barY = sy + r * 0.8
+
+    local hpFrac = beast.hp / beast.maxHP
+    local P = InkPalette
+
+    nvgSave(vg)
+    -- 底框
+    nvgBeginPath(vg)
+    nvgRoundedRect(vg, barX, barY, barW, barH, 1.5)
+    nvgFillColor(vg, nvgRGBAf(P.inkWash.r, P.inkWash.g, P.inkWash.b, 0.40))
+    nvgFill(vg)
+    -- 血量填充
+    local fillColor = hpFrac > 0.3 and P.cinnabar or P.gold
+    nvgBeginPath(vg)
+    nvgRoundedRect(vg, barX, barY, barW * hpFrac, barH, 1.5)
+    nvgFillColor(vg, nvgRGBAf(fillColor.r, fillColor.g, fillColor.b, 0.70))
+    nvgFill(vg)
+    nvgRestore(vg)
+end
+
+--- 攻击预警视觉（warmup阶段绘制方向/范围提示）
+function BeastRenderer.drawAttackWarning(vg, beast, sx, sy, r, ppu, t)
+    local atk = beast.currentAttack
+    if not atk then return end
+    local warmup = atk.warmup or 0
+    if warmup <= 0 then return end -- warmup=0 = 无预警（偷袭类）
+
+    -- 进度：0→1，1 表示即将命中
+    local progress = math.min(1.0, 1.0 - (beast.attackTimer or 0) / warmup)
+
+    -- 闪烁加速：进度越大闪烁越快
+    local flashHz = 3 + progress * 8  -- 3→11 Hz
+    local flash = 0.5 + 0.5 * math.sin(t * flashHz * math.pi * 2)
+    local baseAlpha = 0.15 + progress * 0.45 -- 0.15→0.60
+
+    local facing = beast.facing or 0
+    local P = InkPalette
+
+    if atk.aoeType == "line" then
+        ----------------------------------------
+        -- 线型预警：方向箭头 + 射线
+        ----------------------------------------
+        local range = (atk.range or 3.0) * ppu
+        local arrowLen = range * progress  -- 逐渐延伸
+
+        -- 射线方向
+        local dx = math.cos(facing)
+        local dy = math.sin(facing)
+
+        -- 危险射线（从兽身延伸）
+        local lineAlpha = baseAlpha * flash
+        nvgSave(vg)
+        nvgLineCap(vg, NVG_ROUND)
+
+        -- 主线
+        nvgBeginPath(vg)
+        nvgMoveTo(vg, sx, sy)
+        nvgLineTo(vg, sx + dx * arrowLen, sy + dy * arrowLen)
+        nvgStrokeWidth(vg, 2.5 + progress * 2.0)
+        nvgStrokeColor(vg, nvgRGBAf(P.cinnabar.r, P.cinnabar.g, P.cinnabar.b, lineAlpha))
+        nvgStroke(vg)
+
+        -- 箭头三角
+        if progress > 0.3 then
+            local tipX = sx + dx * arrowLen
+            local tipY = sy + dy * arrowLen
+            local perpX = -dy  -- 垂直方向
+            local perpY = dx
+            local headSize = (6 + progress * 6)
+
+            nvgBeginPath(vg)
+            nvgMoveTo(vg, tipX + dx * headSize, tipY + dy * headSize)
+            nvgLineTo(vg, tipX + perpX * headSize * 0.6, tipY + perpY * headSize * 0.6)
+            nvgLineTo(vg, tipX - perpX * headSize * 0.6, tipY - perpY * headSize * 0.6)
+            nvgClosePath(vg)
+            nvgFillColor(vg, nvgRGBAf(P.cinnabar.r, P.cinnabar.g, P.cinnabar.b, lineAlpha * 0.8))
+            nvgFill(vg)
+        end
+
+        nvgRestore(vg)
+
+    elseif atk.aoeType == "circle" then
+        ----------------------------------------
+        -- 圆形AOE预警：扩散裂纹圆 + 中心震波
+        ----------------------------------------
+        local aoeR = (atk.aoeRadius or 2.0) * ppu
+        local expandR = aoeR * progress  -- 逐渐扩大到满半径
+
+        nvgSave(vg)
+
+        -- 扩散圆环（水墨裂纹感）
+        local ringAlpha = baseAlpha * flash * 0.7
+        nvgBeginPath(vg)
+        nvgCircle(vg, sx, sy, expandR)
+        nvgStrokeWidth(vg, 1.5 + progress * 1.5)
+        nvgStrokeColor(vg, nvgRGBAf(P.cinnabar.r, P.cinnabar.g, P.cinnabar.b, ringAlpha))
+        nvgStroke(vg)
+
+        -- 内部填充（半透明危险区域）
+        if progress > 0.4 then
+            nvgBeginPath(vg)
+            nvgCircle(vg, sx, sy, expandR)
+            nvgFillColor(vg, nvgRGBAf(P.cinnabar.r, P.cinnabar.g, P.cinnabar.b,
+                (progress - 0.4) * 0.15 * flash))
+            nvgFill(vg)
+        end
+
+        -- 裂纹线条（从中心向外放射）
+        local crackCount = 6
+        nvgLineCap(vg, NVG_ROUND)
+        for i = 1, crackCount do
+            local angle = (i - 1) / crackCount * math.pi * 2 + t * 0.5
+            local crackLen = expandR * (0.5 + progress * 0.5)
+            -- 锯齿状裂纹
+            nvgBeginPath(vg)
+            nvgMoveTo(vg, sx, sy)
+            local steps = 3
+            for s = 1, steps do
+                local frac = s / steps
+                local jitter = math.sin(s * 7 + i * 13 + t * 3) * expandR * 0.08
+                local px = sx + math.cos(angle) * crackLen * frac + math.cos(angle + math.pi / 2) * jitter
+                local py = sy + math.sin(angle) * crackLen * frac + math.sin(angle + math.pi / 2) * jitter
+                nvgLineTo(vg, px, py)
+            end
+            nvgStrokeWidth(vg, 1.0)
+            nvgStrokeColor(vg, nvgRGBAf(P.cinnabar.r, P.cinnabar.g, P.cinnabar.b,
+                ringAlpha * 0.6))
+            nvgStroke(vg)
+        end
+
+        nvgRestore(vg)
+
+    else
+        ----------------------------------------
+        -- 近战/扇形预警：扇形危险区
+        ----------------------------------------
+        local range = (atk.range or 2.0) * ppu
+        local arcHalf = math.rad((atk.arc or 60) / 2)
+        local expandRange = range * progress
+
+        nvgSave(vg)
+
+        -- 扇形填充
+        local arcAlpha = baseAlpha * flash * 0.5
+        nvgBeginPath(vg)
+        nvgMoveTo(vg, sx, sy)
+        -- NanoVG 角度：facing 从 atan2 而来，需转为屏幕角度
+        nvgArc(vg, sx, sy, expandRange, facing - arcHalf, facing + arcHalf, NVG_CW)
+        nvgClosePath(vg)
+        nvgFillColor(vg, nvgRGBAf(P.cinnabar.r, P.cinnabar.g, P.cinnabar.b, arcAlpha))
+        nvgFill(vg)
+
+        -- 扇形描边
+        nvgBeginPath(vg)
+        nvgMoveTo(vg, sx, sy)
+        nvgArc(vg, sx, sy, expandRange, facing - arcHalf, facing + arcHalf, NVG_CW)
+        nvgClosePath(vg)
+        nvgStrokeWidth(vg, 1.5)
+        nvgStrokeColor(vg, nvgRGBAf(P.cinnabar.r, P.cinnabar.g, P.cinnabar.b,
+            arcAlpha * 1.5))
+        nvgStroke(vg)
+
+        nvgRestore(vg)
+    end
+
+    -- 通用：预警 "!" 字符脉冲（进度>60%时显示）
+    if progress > 0.6 then
+        local bangAlpha = (progress - 0.6) / 0.4 * flash * 0.8
+        local bangY = sy - r * 1.8
+        nvgSave(vg)
+        nvgFontSize(vg, r * (1.0 + progress * 0.5))
+        nvgFontFace(vg, "sans")
+        nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+        nvgFillColor(vg, nvgRGBAf(P.cinnabar.r, P.cinnabar.g, P.cinnabar.b, bangAlpha))
+        nvgText(vg, sx, bangY, "!")
+        nvgRestore(vg)
+    end
 end
 
 --- 偷袭成功 "袭" 字闪现

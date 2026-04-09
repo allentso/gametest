@@ -305,13 +305,14 @@ function InkTileRenderer.drawWaterDetail(vg, tile, sx, sy, ppu, t, alphaScale)
     nvgStrokeColor(vg, nvgRGBAf(c.r, c.g, c.b, rippleA * alphaScale))
     nvgStroke(vg)
 
-    -- 水面光斑
-    local sparkle = math.sin(t * 2.0 + seed) * 0.10 + 0.15
+    -- 水面光斑（改为淡蓝微光弧线，不画中心白点）
+    local sparkle = math.sin(t * 2.0 + seed) * 0.08 + 0.12
     nvgBeginPath(vg)
-    nvgEllipse(vg, sx + ppu * 0.05, sy - ppu * 0.06,
-        ppu * 0.14, ppu * 0.08)
-    nvgFillColor(vg, nvgRGBAf(0.85, 0.90, 0.95, sparkle * alphaScale))
-    nvgFill(vg)
+    nvgArc(vg, sx + ppu * 0.05, sy - ppu * 0.04,
+        ppu * 0.18, -0.6, 0.6, NVG_CW)
+    nvgStrokeWidth(vg, 1.2)
+    nvgStrokeColor(vg, nvgRGBAf(c.r, c.g + 0.08, c.b + 0.06, sparkle * alphaScale))
+    nvgStroke(vg)
 
     -- 水雾效果（淡墨飘渺边缘）
     BrushStrokes.inkWash(vg, sx, sy - ppu * 0.25, ppu * 0.20, ppu * 0.55,

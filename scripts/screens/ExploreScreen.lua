@@ -18,6 +18,8 @@ local SessionState = require("systems.SessionState")
 local GameState = require("systems.GameState")
 local EventBus = require("systems.EventBus")
 local ScreenManager = require("systems.ScreenManager")
+local CombatSystem = require("systems.CombatSystem")
+local SkillSystem = require("systems.SkillSystem")
 local TutorialSystem = require("systems.TutorialSystem")
 local BrushStrokes = require("render.BrushStrokes")
 local InkTileRenderer = require("render.InkTileRenderer")
@@ -28,62 +30,16 @@ local BeastRenderer = require("render.BeastRenderer")
 local RES_NAMES = {
     lingshi = "灵石", shouhun = "兽魂", tianjing = "天晶", lingyin = "灵印",
     traceAsh = "追迹灰", mirrorSand = "镇灵砂", soulCharm = "归魂符",
-    beastEye = "兽瞳", sealEcho = "封印回响",
+    beastEye = "兽瞳", sealEcho = "封印回响", busicao = "不死草",
 }
 
 local LoreData = require("data.LoreData")
 
-------------------------------------------------------------
--- 流派层级效果定义（3层：初学/精通/大成）
-------------------------------------------------------------
-local SCHOOL_EFFECTS = {
-    trace = {
-        { name = "初学·追迹", desc = "调查线索速度+15%",       clueSpeedMul = 1.15 },
-        { name = "精通·追迹", desc = "调查速度+25%，线索可见距离+1", clueSpeedMul = 1.25, clueVision = 1 },
-        { name = "大成·追迹", desc = "调查速度+40%，SSR线索需求-1，闪光+10%，兽目珠30秒", clueSpeedMul = 1.40, clueVision = 1, ssrReduce = 1, flashBonus = 0.10, beastEyeDuration = 30 },
-    },
-    suppress = {
-        { name = "初学·压制", desc = "QTE速度降低10%",         qteSpeedMul = 0.90 },
-        { name = "精通·压制", desc = "QTE速度降低20%，目标区+10%", qteSpeedMul = 0.80, qteZoneMul = 1.10 },
-        { name = "大成·压制", desc = "QTE速度降低30%，失败可重试1次", qteSpeedMul = 0.70, qteZoneMul = 1.10, qteRetry = 1 },
-    },
-    evac = {
-        { name = "初学·撤离", desc = "撤离时间-0.5s",          evacTimeSave = 0.5 },
-        { name = "精通·撤离", desc = "撤离时间-1s，灵契保护1只",  evacTimeSave = 1.0, contractProtect = 1 },
-        { name = "大成·撤离", desc = "撤离时间-1.5s，紧急逃脱无损失", evacTimeSave = 1.5, contractProtect = 1, safeEscape = true },
-    },
-    greed = {
-        { name = "初学·贪渊", desc = "高危区资源产出+20%",      dangerResMul = 1.20 },
-        { name = "精通·贪渊", desc = "资源产出+30%，瘴气消耗减半", dangerResMul = 1.30, dangerDrainHalf = true },
-        { name = "大成·贪渊", desc = "资源产出+50%，瘴气免疫",   dangerResMul = 1.50, dangerImmune = true },
-    },
-}
-
---- 获取当前流派层级 (0=无/1=初学/2=精通/3=大成)
---- 需同时满足：使用次数达标 AND 封灵师境界达标
-local function getSchoolTier()
-    local school = SessionState.selectedSchool
-    if not school then return 0 end
-    local progress = GameState.data.schoolProgress[school] or 0
-    local level = GameState.getSealerLevel()
-
-    -- 大成：使用10次 + 境界5
-    if progress >= 10 and level >= 5 then return 3
-    -- 精通：使用5次 + 境界3
-    elseif progress >= 5 and level >= 3 then return 2
-    -- 初学：使用1次（默认解锁）
-    elseif progress >= 1 then return 1
-    else return 0 end
-end
+local SchoolEffects = require("systems.SchoolEffects")
 
 --- 获取当前流派效果表（nil 表示无效果）
 local function getSchoolEffect()
-    local school = SessionState.selectedSchool
-    if not school then return nil end
-    local tier = getSchoolTier()
-    if tier == 0 then return nil end
-    local effects = SCHOOL_EFFECTS[school]
-    return effects and effects[tier] or nil
+    return SchoolEffects.get()
 end
 
 local ExploreScreen = {}
@@ -127,6 +83,10 @@ function ExploreScreen.new(params)
     self.shakeTimer = 0
     self.shakeIntensity = 0
 
+    -- 小地图
+    self.minimapExpanded = false
+    self.minimapBounds = nil
+
     -- 墨鸦墨迹系统
     self.inkPatches = {}
 
@@ -148,6 +108,9 @@ function ExploreScreen:onEnter()
 
     -- 初始化迷雾
     FogOfWar.init(Config.MAP_WIDTH, Config.MAP_HEIGHT)
+
+    -- 初始化战斗系统
+    CombatSystem.reset()
 
     -- 初始化计时器
     Timer.reset(Config.GAME_DURATION)
@@ -197,6 +160,45 @@ function ExploreScreen:onEnter()
         self:onEvacuationResult(success, lostContracts)
     end, self)
 
+    -- 战斗系统事件
+    EventBus.on("spirit_collapse_start", function(data)
+        self:addToast("灵气溃散！")
+        self.shakeTimer = 1.0
+        self.shakeIntensity = 4
+    end, self)
+
+    EventBus.on("spirit_collapse_end", function()
+        self:onSpiritCollapseEnd()
+    end, self)
+
+    EventBus.on("fusufu_triggered", function(data)
+        self:addToast("复苏符生效！恢复" .. data.healed .. "滴灵气")
+        self.shakeTimer = 0.5
+        self.shakeIntensity = 2
+    end, self)
+
+    EventBus.on("player_damaged", function(data)
+        if data.source ~= "miasma" then
+            self.shakeTimer = 0.2
+            self.shakeIntensity = 2
+        end
+        -- 白泽庇护光晕：凝视期间玩家被异兽攻击触发
+        if data.source == "beast" then
+            for _, beast in ipairs(self.beasts or {}) do
+                if beast.id == "004" and beast.aiState == "gaze" then
+                    BeastAI.triggerBaizeProtection(beast, self.beasts, self.playerX, self.playerY)
+                    break
+                end
+            end
+        end
+    end, self)
+
+    EventBus.on("baize_protection", function(data)
+        self:addToast("白泽发出庇护光晕！周围异兽攻击力降低")
+        self.shakeTimer = 0.3
+        self.shakeIntensity = 1
+    end, self)
+
     EventBus.on("ink_patch_created", function(patch)
         table.insert(self.inkPatches, {
             x = patch.x, y = patch.y,
@@ -213,6 +215,54 @@ function ExploreScreen:onEnter()
         else
             self:addToast("习性推断完成，但未锁定方位")
         end
+    end, self)
+
+    -- 战斗事件
+    EventBus.on("beast_attack_hit", function(data)
+        self:addToast(data.beast.name .. "发动" .. data.attack .. "！-" .. data.damage .. "滴")
+        self.shakeTimer = 0.3
+        self.shakeIntensity = 3
+        -- 冰蚕受击冻结反应：攻击落点（玩家位置）1格内的冰蚕短暂冻结0.5s
+        for _, b in ipairs(self.beasts or {}) do
+            if b.id == "009" and b.aiState ~= "captured" and b.aiState ~= "frozen" then
+                local dx = b.x - self.playerX
+                local dy = b.y - self.playerY
+                if dx * dx + dy * dy <= 1 then
+                    EventBus.emit("beast_frozen", { beast = b, duration = 0.5, source = "bingcan_reaction" })
+                end
+            end
+        end
+    end, self)
+
+    EventBus.on("beast_warn", function(data)
+        self:addToast(data.beast.name .. "发出警告！尽快后退！")
+    end, self)
+
+    EventBus.on("beast_ambush", function(data)
+        self:addToast(data.beast.name .. "伏击现身！")
+        self.shakeTimer = 0.4
+        self.shakeIntensity = 4
+    end, self)
+
+    EventBus.on("beast_weakened", function(data)
+        self:addToast(data.beast.name .. "进入虚弱状态！封灵加成+15%")
+    end, self)
+
+    EventBus.on("player_knockback", function(data)
+        -- 击退：从攻击源反方向推1格
+        local angle = math.atan2(self.playerY - data.fromY, self.playerX - data.fromX)
+        local kd = data.dist or 1.0
+        self.playerX = self.playerX + math.cos(angle) * kd
+        self.playerY = self.playerY + math.sin(angle) * kd
+        -- 边界限制
+        self.playerX = math.max(1.5, math.min(Config.MAP_WIDTH - 2.5, self.playerX))
+        self.playerY = math.max(1.5, math.min(Config.MAP_HEIGHT - 2.5, self.playerY))
+    end, self)
+
+    EventBus.on("vision_shrink", function(data)
+        -- 视野收缩效果（噬天光吞噬等）
+        self.visionShrinkRadius = data.radius or 1.5
+        self.visionShrinkTimer = data.duration or 5.0
     end, self)
 
     -- 流派追迹大成：SSR线索需求-1 + 闪光概率+10%
@@ -255,8 +305,84 @@ function ExploreScreen:onEnter()
     -- 兽目珠初始化
     self.beastEyeTimer = 0
 
+    -- 恢复道具施法状态
+    self.recoveryUsing = nil
+
+    -- 背刺技能初始化
+    SkillSystem.initSession(SessionState.selectedSkill)
+
     -- 特殊道具 HUD 按钮状态
     self.itemButtons = {}
+
+    -- 技能事件监听
+    EventBus.on("skill_hit", function(data)
+        local desc = data.name
+        if data.isBackstab then desc = "【背刺】" .. desc end
+        if data.effectDesc then desc = desc .. "：" .. data.effectDesc end
+        self:addToast(desc)
+    end, self)
+    EventBus.on("skill_fail", function(data)
+        if data.reason == "uses_depleted" then
+            self:addToast("技能次数已用完")
+        elseif data.reason == "no_target" then
+            self:addToast("范围内无目标")
+        elseif data.reason == "cooldown" then
+            self:addToast("技能冷却中...")
+        elseif data.reason == "collapsed" then
+            self:addToast("溃散状态无法使用技能")
+        end
+    end, self)
+    EventBus.on("skill_zone_placed", function(data)
+        self:addToast(data.name .. "已布置")
+    end, self)
+    EventBus.on("skill_explosion", function(data)
+        -- 爆炸视觉效果
+        self.screenShake = 0.3
+    end, self)
+    EventBus.on("beast_stunned", function(data)
+        local beast = data.beast
+        if beast then
+            beast.stunTimer = data.duration
+            beast.prevAiState = beast.aiState
+            beast.aiState = "stunned"
+        end
+    end, self)
+    EventBus.on("beast_slowed", function(data)
+        local beast = data.beast
+        if beast then
+            beast.slowTimer = data.duration
+            beast.slowMul = data.speedMul
+        end
+    end, self)
+    EventBus.on("beast_frozen", function(data)
+        local beast = data.beast
+        if beast then
+            beast.freezeTimer = data.duration
+            beast.prevAiState = beast.aiState
+            beast.aiState = "frozen"
+        end
+    end, self)
+    EventBus.on("beast_interrupted", function(data)
+        local beast = data.beast
+        if beast then
+            beast.attackState = nil
+            beast.attackTimer = 0
+        end
+    end, self)
+    EventBus.on("beast_abandon_chase", function(data)
+        local beast = data.beast
+        if beast then
+            beast.aiState = "wander"
+            beast.chaseTimer = 0
+        end
+    end, self)
+    EventBus.on("beast_revealed", function(data)
+        local beast = data.beast
+        if beast then
+            beast.revealed = true
+            self:addToast("伏击异兽已暴露！")
+        end
+    end, self)
 
     -- 新手引导
     TutorialSystem.start()
@@ -300,12 +426,24 @@ function ExploreScreen:spawnTrackedBeast(quality)
     local beastInfo = biome
         and BeastData.getRandomForBiome(biome)
         or BeastData.getRandom()
-    local angle = math.random() * math.pi * 2
-    local dist = 6 + math.random() * 4
-    local tx = self.playerX + math.cos(angle) * dist
-    local ty = self.playerY + math.sin(angle) * dist
-    tx = math.max(2, math.min(Config.MAP_WIDTH - 3, tx))
-    ty = math.max(2, math.min(Config.MAP_HEIGHT - 3, ty))
+    -- 在玩家周围 6-10 格找一个可通行位置
+    local tx, ty
+    for _ = 1, 20 do
+        local angle = math.random() * math.pi * 2
+        local dist = 6 + math.random() * 4
+        local cx = math.floor(self.playerX + math.cos(angle) * dist)
+        local cy = math.floor(self.playerY + math.sin(angle) * dist)
+        cx = math.max(2, math.min(Config.MAP_WIDTH - 3, cx))
+        cy = math.max(2, math.min(Config.MAP_HEIGHT - 3, cy))
+        if not self.map:isBlocked(cx, cy) and not self.map:isOccupied(cx, cy) then
+            tx, ty = cx, cy
+            break
+        end
+    end
+    if not tx then
+        tx = math.max(2, math.min(Config.MAP_WIDTH - 3, math.floor(self.playerX + 6)))
+        ty = math.max(2, math.min(Config.MAP_HEIGHT - 3, math.floor(self.playerY + 6)))
+    end
 
     local beast = BeastAI.createBeast(beastInfo, tx, ty, quality)
     beast.aiState = "wander"
@@ -315,11 +453,31 @@ function ExploreScreen:spawnTrackedBeast(quality)
 end
 
 function ExploreScreen:findOpenPosition(minY, maxY)
-    for attempt = 1, 30 do
+    for _ = 1, 50 do
         local x = math.random(3, Config.MAP_WIDTH - 3)
         local y = math.random(minY, maxY)
-        if not self.map:isBlocked(x, y) then
-            return x, y
+        if not self.map:isBlocked(x, y) and not self.map:isOccupied(x, y) then
+            -- 与已有异兽保持距离
+            local tooClose = false
+            for _, beast in ipairs(self.beasts) do
+                local dx = beast.x - x
+                local dy = beast.y - y
+                if dx * dx + dy * dy < 9 then
+                    tooClose = true
+                    break
+                end
+            end
+            -- 与玩家保持距离
+            if not tooClose then
+                local dx = self.playerX - x
+                local dy = self.playerY - y
+                if dx * dx + dy * dy < 16 then
+                    tooClose = true
+                end
+            end
+            if not tooClose then
+                return x, y
+            end
         end
     end
     return nil, nil
@@ -396,6 +554,17 @@ function ExploreScreen:update(dt)
             break
         end
     end
+    -- 战斗系统视野乘数（墨迹debuff）
+    visionRadius = visionRadius * CombatSystem.getVisionMultiplier()
+    -- 视野收缩效果（噬天光吞噬等）
+    if self.visionShrinkTimer and self.visionShrinkTimer > 0 then
+        self.visionShrinkTimer = self.visionShrinkTimer - dt
+        visionRadius = math.min(visionRadius, self.visionShrinkRadius or 1.5)
+    end
+    -- 溃散状态视野强制收缩
+    if CombatSystem.collapsed then
+        visionRadius = math.min(visionRadius, CombatSystem.COLLAPSE_VISION)
+    end
     FogOfWar.update(self.playerX, self.playerY, visionRadius)
 
     -- 相机跟随
@@ -420,6 +589,11 @@ function ExploreScreen:update(dt)
         if beast.aiState ~= "captured" and beast.aiState ~= "suppress" then
             BeastAI.update(beast, dt, self.playerX, self.playerY, self.map, aiOptions)
         end
+    end
+
+    -- 异兽虚弱状态更新
+    for _, beast in ipairs(self.beasts) do
+        CombatSystem.updateBeastWeaken(beast, dt)
     end
 
     -- 撤离更新
@@ -469,38 +643,12 @@ function ExploreScreen:updatePlayerMovement(dt)
     -- 竹林隐蔽状态（供BeastAI使用）
     self.playerInBamboo = (tileType == "bamboo")
 
-    -- 瘴气地形每秒消耗1灵石（贪渊流派可减免）
-    if tileType == "danger" then
-        local greedEffect = getSchoolEffect()
-        local dangerImmune = greedEffect and greedEffect.dangerImmune
-        if not dangerImmune then
-            local drainInterval = 1.0
-            if greedEffect and greedEffect.dangerDrainHalf then
-                drainInterval = 2.0
-            end
-            self.dangerDrainTimer = (self.dangerDrainTimer or 0) + dt
-            if self.dangerDrainTimer >= drainInterval then
-                self.dangerDrainTimer = self.dangerDrainTimer - drainInterval
-                -- 灾变期(danger/collapse)瘴气伤害加倍
-                local drainAmount = 1
-                if Timer.phase == "danger" or Timer.phase == "collapse" then
-                    drainAmount = 2
-                end
-                local currentLingshi = SessionState.getResource("lingshi")
-                if currentLingshi > 0 then
-                    local actual = math.min(drainAmount, currentLingshi)
-                    SessionState.addResource("lingshi", -actual)
-                    if drainAmount > 1 then
-                        self:addToast("瘴气猛烈侵蚀 -" .. actual .. "灵石")
-                    else
-                        self:addToast("瘴气侵蚀 -1灵石")
-                    end
-                end
-            end
-        end
-    else
-        self.dangerDrainTimer = 0
-    end
+    -- 瘴气地形HP伤害（贪渊流派可减免）
+    local inMiasma = (tileType == "danger")
+    local greedEffect = getSchoolEffect()
+    local miasmaImmune = greedEffect and greedEffect.dangerImmune or false
+    local miasmaHalf = greedEffect and greedEffect.dangerDrainHalf or false
+    CombatSystem.update(dt, Timer.phase or "explore", inMiasma, miasmaImmune, miasmaHalf)
 
     if self.playerMoving then
         local speed = Config.PLAYER_SPEED
@@ -515,6 +663,18 @@ function ExploreScreen:updatePlayerMovement(dt)
         -- 水蛟被动：水面地形移速+20%
         if tileType == "water" and self:hasCapturedBeast("006") then
             speed = speed * 1.2
+        end
+        -- 战斗系统速度乘数（debuff/溃散减速）
+        speed = speed * CombatSystem.getSpeedMultiplier()
+
+        -- 迷向debuff：随机偏转移动方向（±60°抖动）
+        if CombatSystem.hasDebuff("dizzy") then
+            local angle = math.atan2(dy, dx)
+            local jitter = (math.random() - 0.5) * math.pi * 0.67  -- ±60°
+            angle = angle + jitter
+            local len = math.sqrt(dx * dx + dy * dy)
+            dx = math.cos(angle) * len
+            dy = math.sin(angle) * len
         end
 
         local moveX = dx * speed * dt
@@ -554,6 +714,75 @@ function ExploreScreen:updatePlayerMovement(dt)
         if self.beastEyeTimer <= 0 then
             self.beastEyeTimer = 0
             self:addToast("兽目珠灵光已消退")
+        end
+    end
+
+    -- 背刺技能系统更新
+    SkillSystem.update(dt)
+
+    -- 异兽眩晕/冻结状态倒计时
+    for _, beast in ipairs(self.beasts or {}) do
+        if beast.stunTimer and beast.stunTimer > 0 then
+            beast.stunTimer = beast.stunTimer - dt
+            if beast.stunTimer <= 0 then
+                beast.stunTimer = 0
+                beast.aiState = beast.prevAiState or "wander"
+                beast.prevAiState = nil
+            end
+        end
+        if beast.freezeTimer and beast.freezeTimer > 0 then
+            beast.freezeTimer = beast.freezeTimer - dt
+            if beast.freezeTimer <= 0 then
+                beast.freezeTimer = 0
+                beast.aiState = beast.prevAiState or "wander"
+                beast.prevAiState = nil
+            end
+        end
+        if beast.slowTimer and beast.slowTimer > 0 then
+            beast.slowTimer = beast.slowTimer - dt
+            if beast.slowTimer <= 0 then
+                beast.slowTimer = 0
+                beast.slowMul = nil
+            end
+        end
+    end
+
+    -- 恢复道具施法倒计时
+    if self.recoveryUsing then
+        -- 打断检测：附近有异兽攻击或追击则取消
+        local interrupted = false
+        local effectEvac = getSchoolEffect()
+        local allowInChase = effectEvac and effectEvac.recoveryCastMul
+        for _, beast in ipairs(self.beasts or {}) do
+            if beast.aiState == "attack" then
+                local dist = math.sqrt((beast.x - self.playerX)^2 + (beast.y - self.playerY)^2)
+                if dist < 4 then
+                    interrupted = true
+                    break
+                end
+            elseif beast.aiState == "chase" and not allowInChase then
+                local dist = math.sqrt((beast.x - self.playerX)^2 + (beast.y - self.playerY)^2)
+                if dist < 4 then
+                    interrupted = true
+                    break
+                end
+            end
+        end
+        if interrupted then
+            -- 被打断：退还道具
+            SessionState.addItem(self.recoveryUsing.itemId, 1)
+            local name = (self.recoveryUsing.itemId == "lingquanWan") and "灵泉丸" or "绛珠露"
+            self:addToast(name .. "使用被打断！")
+            self.recoveryUsing = nil
+        else
+            self.recoveryUsing.timer = self.recoveryUsing.timer - dt
+            if self.recoveryUsing.timer <= 0 then
+                -- 施法完成：恢复HP
+                CombatSystem.heal(self.recoveryUsing.healAmount)
+                local name = (self.recoveryUsing.itemId == "lingquanWan") and "灵泉丸" or "绛珠露"
+                self:addToast(name .. "生效，恢复" .. self.recoveryUsing.healAmount .. "点灵气")
+                self.recoveryUsing = nil
+            end
         end
     end
 
@@ -768,6 +997,14 @@ function ExploreScreen:doInteract()
             if gEffect and gEffect.dangerResMul then
                 amount = math.floor(amount * gEffect.dangerResMul)
             end
+        end
+        -- 不死草：立即使用，全满HP + 清除所有debuff
+        if res.type == "busicao" then
+            CombatSystem.heal(CombatSystem.MAX_HP)
+            CombatSystem.clearAllDebuffs()
+            self:addToast("不死草生效！灵气全满，所有异状清除！")
+            TutorialSystem.checkTrigger("collect")
+            return
         end
         -- 区分会话资源和跨局资源
         if res.type == "lingshi" or res.type == "shouhun" or res.type == "tianjing" then
@@ -1000,6 +1237,10 @@ function ExploreScreen:onEvacuationResult(success, lostContracts)
 end
 
 function ExploreScreen:goToResult(lostContracts, evacType)
+    -- 持久化当前 HP 到存档
+    GameState.data.hp = math.max(1, CombatSystem.hp)
+    GameState.save()
+
     -- 从 contracts 中移除丢失的
     local remaining = {}
     for _, c in ipairs(SessionState.getContracts()) do
@@ -1018,6 +1259,33 @@ function ExploreScreen:goToResult(lostContracts, evacType)
         elapsed = Timer.elapsed,
         evacType = evacType or "normal",
     })
+end
+
+function ExploreScreen:onSpiritCollapseEnd()
+    -- 灵气溃散结束：强制逃脱
+    local contracts = SessionState.getContracts()
+    local lostContracts = {}
+
+    -- 按 SSR→SR→R 顺序丢失1只
+    local priorities = { SSR = 1, SR = 2, R = 3 }
+    local sorted = {}
+    for _, c in ipairs(contracts) do table.insert(sorted, c) end
+    table.sort(sorted, function(a, b)
+        return (priorities[a.quality] or 9) < (priorities[b.quality] or 9)
+    end)
+    if #sorted > 0 then
+        table.insert(lostContracts, sorted[1])
+    end
+
+    -- 灵石损失40%，兽魂/天晶清零
+    SessionState.resources.lingshi = math.floor((SessionState.resources.lingshi or 0) * 0.6)
+    SessionState.resources.shouhun = 0
+    SessionState.resources.tianjing = 0
+
+    -- 溃散（死亡）恢复 1 滴血量
+    CombatSystem.hp = 1
+
+    self:goToResult(lostContracts, "collapse")
 end
 
 function ExploreScreen:forceEnd()
@@ -1105,7 +1373,74 @@ function ExploreScreen:useSpecialItem(itemId)
             self.beastEyeTimer = duration
             self:addToast("兽目珠开眼！显示异兽位置" .. duration .. "秒")
         end
+    elseif itemId == "lingquanWan" or itemId == "jianzhulu" then
+        self:useRecoveryItem(itemId)
     end
+end
+
+--- 使用恢复道具（灵泉丸/绛珠露）
+function ExploreScreen:useRecoveryItem(itemId)
+    if not SessionState.hasItem(itemId) then return end
+    if CombatSystem.collapsed then
+        self:addToast("溃散状态无法使用恢复道具")
+        return
+    end
+    if CombatSystem.hp >= CombatSystem.MAX_HP then
+        self:addToast("灵气已满，无需使用")
+        return
+    end
+    -- 使用中不可重复触发
+    if self.recoveryUsing then
+        self:addToast("正在使用道具...")
+        return
+    end
+    -- 检查是否有异兽在chase/attack状态且距离较近（距离<4格不可使用）
+    local canUse = true
+    -- 撤离流精通+：chase下也可使用
+    local effectEvac = getSchoolEffect()
+    local allowInChase = effectEvac and effectEvac.recoveryCastMul
+    for _, beast in ipairs(self.beasts or {}) do
+        if beast.aiState == "attack" then
+            local dist = math.sqrt((beast.x - self.playerX)^2 + (beast.y - self.playerY)^2)
+            if dist < 4 then
+                canUse = false
+                break
+            end
+        elseif beast.aiState == "chase" and not allowInChase then
+            local dist = math.sqrt((beast.x - self.playerX)^2 + (beast.y - self.playerY)^2)
+            if dist < 4 then
+                canUse = false
+                break
+            end
+        end
+    end
+    if not canUse then
+        self:addToast("附近有异兽追击，无法使用！")
+        return
+    end
+
+    -- 开始使用：消耗道具，设置吟唱计时
+    SessionState.addItem(itemId, -1)
+    local healAmount, castTime
+    if itemId == "lingquanWan" then
+        healAmount = 2
+        castTime = 1.0
+    else -- jianzhulu
+        healAmount = 5
+        castTime = 0.5
+    end
+    -- 撤离流精通+：耗时减半
+    if effectEvac and effectEvac.recoveryCastMul then
+        castTime = castTime * effectEvac.recoveryCastMul
+    end
+    self.recoveryUsing = {
+        itemId = itemId,
+        healAmount = healAmount,
+        timer = castTime,
+        maxTime = castTime,
+    }
+    local name = (itemId == "lingquanWan") and "灵泉丸" or "绛珠露"
+    self:addToast("使用" .. name .. "中...")
 end
 
 function ExploreScreen:addToast(msg)
@@ -1139,15 +1474,43 @@ function ExploreScreen:onInput(action, sx, sy)
         return true
     end
 
+    -- 小地图展开状态：任意点击关闭
+    if self.minimapExpanded then
+        if action == "down" then
+            self.minimapExpanded = false
+        end
+        return true
+    end
+
     if self.paused then return false end
 
     if action == "down" then
+        -- 小地图点击展开
+        if self.minimapBounds then
+            local mb = self.minimapBounds
+            if sx >= mb.x and sx <= mb.x + mb.w and sy >= mb.y and sy <= mb.y + mb.h then
+                self.minimapExpanded = true
+                return true
+            end
+        end
+
         -- 紧急逃脱按钮
         if self.emergencyEscapeBtn then
             local eb = self.emergencyEscapeBtn
             if sx >= eb.x and sx <= eb.x + eb.w
                and sy >= eb.y and sy <= eb.y + eb.h then
                 self:doEmergencyEscape()
+                return true
+            end
+        end
+
+        -- 技能按钮
+        if self.skillBtn then
+            local sb = self.skillBtn
+            local dx = sx - sb.x
+            local dy = sy - sb.y
+            if (dx * dx + dy * dy) < (sb.r * sb.r) then
+                SkillSystem.useSkill(self.playerX, self.playerY, self.playerFacing, self.beasts)
                 return true
             end
         end
@@ -1237,7 +1600,39 @@ function ExploreScreen:render(vg, logW, logH, t)
     self:renderHUD(vg, logW, logH, t)
     self:renderBottomBar(vg, logW, logH, t)
     self:renderControls(vg, logW, logH, t)
+    self:renderMinimap(vg, logW, logH, t)
     self:renderToasts(vg, logW, logH, t)
+
+    -- 受击闪红叠层
+    if CombatSystem.hitFlashTimer > 0 then
+        local flashAlpha = math.min(0.35, CombatSystem.hitFlashTimer / 0.3 * 0.35)
+        nvgBeginPath(vg)
+        nvgRect(vg, 0, 0, logW, logH)
+        nvgFillColor(vg, nvgRGBAf(0.8, 0.1, 0.05, flashAlpha))
+        nvgFill(vg)
+    end
+
+    -- 瘴气墨染叠层
+    if CombatSystem.miasmaDmgFlash > 0 then
+        local inkAlpha = math.min(0.25, CombatSystem.miasmaDmgFlash / 1.0 * 0.25)
+        nvgBeginPath(vg)
+        nvgRect(vg, 0, 0, logW, logH)
+        nvgFillColor(vg, nvgRGBAf(0.05, 0.03, 0.08, inkAlpha))
+        nvgFill(vg)
+    end
+
+    -- 溃散倒计时（屏幕中央大字）
+    if CombatSystem.collapsed then
+        local remain = math.ceil(CombatSystem.collapseTimer)
+        local pulse = 0.7 + math.sin(t * 5) * 0.3
+        nvgFontFace(vg, "sans")
+        nvgFontSize(vg, 42)
+        nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+        nvgFillColor(vg, nvgRGBAf(0.8, 0.15, 0.1, pulse))
+        nvgText(vg, logW * 0.5, logH * 0.3, "灵气溃散")
+        nvgFontSize(vg, 28)
+        nvgText(vg, logW * 0.5, logH * 0.3 + 45, remain .. " 秒")
+    end
 
     -- 封灵器选择弹窗
     if self.sealerSelectActive then
@@ -1400,7 +1795,66 @@ function ExploreScreen:renderEntities(vg, logW, logH, t)
 
     -- 玩家（始终绘制在最上层）
     local psx, psy = Camera.toScreen(self.playerX, self.playerY)
+    -- 血量≤3：轻微抖动虚弱特效（仅视觉，不影响实际坐标）
+    if CombatSystem.hp <= 3 and CombatSystem.hp > 0 then
+        local shakeAmt = (4 - CombatSystem.hp) * 0.4  -- hp3→0.4, hp2→0.8, hp1→1.2
+        psx = psx + math.sin(t * 17.3) * shakeAmt
+        psy = psy + math.cos(t * 13.7) * shakeAmt * 0.6
+    end
     InkRenderer.drawPlayer(vg, psx, psy, ppu, self.playerFacing, t)
+
+    -- Debuff指示（玩家脚下颜色环 + 计时文字）
+    local P = InkPalette
+    local activeDebuffs = CombatSystem.debuffs
+    if activeDebuffs then
+        local debuffIdx = 0
+        -- debuff 颜色映射
+        local debuffColors = {
+            petrify = P.inkMedium,
+            sticky  = P.jade,
+            burn    = P.cinnabar,
+            dizzy   = P.gold,
+            ink     = P.inkDark,
+        }
+        for debuffId, debuff in pairs(activeDebuffs) do
+            if debuff.timer and debuff.timer > 0 then
+                debuffIdx = debuffIdx + 1
+                local ringR = ppu * 0.5 + debuffIdx * 4
+                local dColor = debuffColors[debuffId] or P.inkMedium
+                local remain = debuff.timer
+                local pulse = 0.4 + math.sin(t * 3 + debuffIdx * 1.5) * 0.15
+
+                -- 颜色环
+                nvgBeginPath(vg)
+                nvgCircle(vg, psx, psy, ringR)
+                nvgStrokeWidth(vg, 2.0)
+                nvgStrokeColor(vg, nvgRGBAf(dColor.r, dColor.g, dColor.b, pulse))
+                nvgStroke(vg)
+
+                -- 计时文字（环外侧小字）
+                local def = CombatSystem.DEBUFF_DEFS[debuffId]
+                local label = (def and def.name or debuffId) .. string.format("%.0f", remain)
+                nvgFontFace(vg, "sans")
+                nvgFontSize(vg, 9)
+                nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_TOP)
+                nvgFillColor(vg, nvgRGBAf(dColor.r, dColor.g, dColor.b, pulse + 0.15))
+                nvgText(vg, psx, psy + ringR + 2, label)
+            end
+        end
+    end
+
+    -- 恢复道具施法进度（玩家头顶）
+    if self.recoveryUsing then
+        local castProg = 1.0 - (self.recoveryUsing.timer / (self.recoveryUsing.castTime or 2.0))
+        castProg = math.max(0, math.min(1, castProg))
+        -- 圆弧进度
+        nvgBeginPath(vg)
+        nvgArc(vg, psx, psy - ppu * 0.8, 12,
+            -math.pi * 0.5, -math.pi * 0.5 + math.pi * 2 * castProg, NVG_CW)
+        nvgStrokeWidth(vg, 2.5)
+        nvgStrokeColor(vg, nvgRGBAf(P.jade.r, P.jade.g, P.jade.b, 0.75))
+        nvgStroke(vg)
+    end
 
     -- 疾风符生效视觉反馈：风纹短弧
     if self.rushWardTimer and self.rushWardTimer > 0 then
@@ -1511,6 +1965,9 @@ function ExploreScreen:renderHUD(vg, logW, logH, t)
     nvgFontSize(vg, 12)
     nvgFillColor(vg, nvgRGBAf(P.inkMedium.r, P.inkMedium.g, P.inkMedium.b, 0.7))
     nvgText(vg, logW * 0.5, timeY + 40, phaseName)
+
+    -- HP血条（左上角10滴水墨滴）
+    self:renderHPBar(vg, logW, logH, t)
 
     -- 品质印章
     if self.qualityStamp and self.qualityStampAlpha > 0.01 then
@@ -1757,6 +2214,36 @@ function ExploreScreen:renderBottomBar(vg, logW, logH, t)
         })
     end
 
+    -- 灵泉丸：恢复道具
+    local lqCount = SessionState.getItemCount("lingquanWan")
+    local lqCasting = self.recoveryUsing and self.recoveryUsing.itemId == "lingquanWan"
+    if lqCount > 0 or lqCasting then
+        table.insert(specialItems, {
+            id = "lingquanWan", label = "灵泉",
+            count = lqCount,
+            active = lqCasting,
+            timer = lqCasting and self.recoveryUsing.timer or nil,
+            color = P.azure,
+            usable = lqCount > 0 and not self.recoveryUsing and not CombatSystem.collapsed
+                and CombatSystem.hp < CombatSystem.MAX_HP,
+        })
+    end
+
+    -- 绛珠露：恢复道具
+    local jzCount = SessionState.getItemCount("jianzhulu")
+    local jzCasting = self.recoveryUsing and self.recoveryUsing.itemId == "jianzhulu"
+    if jzCount > 0 or jzCasting then
+        table.insert(specialItems, {
+            id = "jianzhulu", label = "绛珠",
+            count = jzCount,
+            active = jzCasting,
+            timer = jzCasting and self.recoveryUsing.timer or nil,
+            color = P.crimson,
+            usable = jzCount > 0 and not self.recoveryUsing and not CombatSystem.collapsed
+                and CombatSystem.hp < CombatSystem.MAX_HP,
+        })
+    end
+
     if #specialItems > 0 then
         local itemW = 70
         local itemH = 28
@@ -1908,6 +2395,79 @@ function ExploreScreen:renderControls(vg, logW, logH, t)
             nvgStrokeColor(vg, nvgRGBAf(P.gold.r, P.gold.g, P.gold.b, 0.8))
             nvgStrokeWidth(vg, 3)
             nvgStroke(vg)
+        end
+    end
+
+    -- 技能按钮（交互按钮左侧）
+    self.skillBtn = nil  -- 重置每帧
+    if SkillSystem.activeSkill then
+        local skill = SkillSystem.SKILLS[SkillSystem.activeSkill]
+        if skill then
+            local skBtnX = logW * 0.60
+            local skBtnY = logH * 0.88
+            local skBtnR = 28
+            local onCooldown = SkillSystem.cooldownTimer > 0
+            local noUses = SkillSystem.usesLeft <= 0
+
+            -- 墨晕底色
+            local bgColor = onCooldown and P.inkLight or (noUses and P.inkWash or P.azure)
+            local bgAlpha = (onCooldown or noUses) and 0.10 or 0.18
+            BrushStrokes.inkWash(vg, skBtnX, skBtnY, skBtnR * 0.15, skBtnR, bgColor, bgAlpha)
+
+            -- 飞白描边弧
+            nvgSave(vg)
+            nvgLineCap(vg, NVG_ROUND)
+            local arcColor = (onCooldown or noUses) and P.inkLight or P.azure
+            local arcAlpha = (onCooldown or noUses) and 0.25 or 0.55
+            for seg = 1, 4 do
+                local startA = (seg - 1) * math.pi * 0.5 + 0.12
+                local sweep = math.pi * 0.5 - 0.35
+                nvgBeginPath(vg)
+                nvgArc(vg, skBtnX, skBtnY, skBtnR * 0.88, startA, startA + sweep, NVG_CW)
+                nvgStrokeWidth(vg, 1.0 + (seg % 3) * 0.3)
+                nvgStrokeColor(vg, nvgRGBAf(arcColor.r, arcColor.g, arcColor.b, arcAlpha))
+                nvgStroke(vg)
+            end
+            nvgRestore(vg)
+
+            -- 冷却遮罩（扇形灰色覆盖）
+            if onCooldown then
+                local cdMax = 1.5  -- 固定冷却时间约1.5s
+                local cdProg = math.min(1, SkillSystem.cooldownTimer / cdMax)
+                nvgBeginPath(vg)
+                nvgMoveTo(vg, skBtnX, skBtnY)
+                nvgArc(vg, skBtnX, skBtnY, skBtnR * 0.85,
+                    -math.pi * 0.5,
+                    -math.pi * 0.5 + math.pi * 2 * cdProg, NVG_CW)
+                nvgClosePath(vg)
+                nvgFillColor(vg, nvgRGBAf(P.inkDark.r, P.inkDark.g, P.inkDark.b, 0.25))
+                nvgFill(vg)
+            end
+
+            -- 技能图标符号（简化水墨符号）
+            local iconSymbols = {
+                lingfudan = "符", zhuijidan = "追", baoyanfu = "焰",
+                fengyinzhen = "封", dingshenzou = "定", qusanfa = "散",
+            }
+            local sym = iconSymbols[SkillSystem.activeSkill] or "技"
+            local textAlpha = (onCooldown or noUses) and 0.35 or 0.85
+            nvgFontFace(vg, "sans")
+            nvgFontSize(vg, 16)
+            nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+            nvgFillColor(vg, nvgRGBAf(P.inkStrong.r, P.inkStrong.g, P.inkStrong.b, textAlpha))
+            nvgText(vg, skBtnX, skBtnY - 2, sym)
+
+            -- 剩余次数标注（右下角小数字）
+            nvgFontSize(vg, 11)
+            nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+            local countColor = noUses and P.cinnabar or P.inkMedium
+            local countAlpha = noUses and 0.70 or 0.75
+            nvgFillColor(vg, nvgRGBAf(countColor.r, countColor.g, countColor.b, countAlpha))
+            nvgText(vg, skBtnX + skBtnR * 0.55, skBtnY + skBtnR * 0.55,
+                tostring(SkillSystem.usesLeft))
+
+            -- 保存按钮区域用于点击检测
+            self.skillBtn = { x = skBtnX, y = skBtnY, r = skBtnR }
         end
     end
 
@@ -2099,6 +2659,212 @@ function ExploreScreen:renderRealmLegend(vg, logW, logH, t)
     nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_BOTTOM)
     nvgFillColor(vg, nvgRGBAf(P.inkLight.r, P.inkLight.g, P.inkLight.b, tipAlpha))
     nvgText(vg, logW * 0.5, cardY + cardH - 12, "点击任意处继续")
+end
+
+------------------------------------------------------------
+-- HP 血条（10滴水墨滴）
+------------------------------------------------------------
+
+function ExploreScreen:renderHPBar(vg, logW, logH, t)
+    local P = InkPalette
+    local hp = CombatSystem.hp
+    local maxHP = CombatSystem.MAX_HP
+
+    local startX = 12
+    local startY = logH * 0.04 + 8
+    local dropSpacing = 14
+    local dropR = 5
+
+    for i = 1, maxHP do
+        local cx = startX + (i - 1) * dropSpacing
+        local cy = startY
+
+        if i <= hp then
+            -- 有血：朱砂实心滴
+            local alive = true
+            -- ≤3滴时闪烁预警
+            if hp <= 3 then
+                local blink = math.sin(t * 6 + i * 0.5)
+                if blink < -0.3 then alive = false end
+            end
+
+            if alive then
+                -- 水滴形状（圆 + 顶部尖角）
+                nvgBeginPath(vg)
+                nvgCircle(vg, cx, cy + 1, dropR)
+                nvgMoveTo(vg, cx - dropR * 0.5, cy - dropR * 0.3)
+                nvgLineTo(vg, cx, cy - dropR * 1.4)
+                nvgLineTo(vg, cx + dropR * 0.5, cy - dropR * 0.3)
+                nvgClosePath(vg)
+                nvgFillColor(vg, nvgRGBAf(P.cinnabar.r, P.cinnabar.g, P.cinnabar.b, 0.85))
+                nvgFill(vg)
+            else
+                -- 闪烁暗态
+                nvgBeginPath(vg)
+                nvgCircle(vg, cx, cy + 1, dropR)
+                nvgFillColor(vg, nvgRGBAf(P.cinnabar.r, P.cinnabar.g, P.cinnabar.b, 0.25))
+                nvgFill(vg)
+            end
+        else
+            -- 无血：灰色空心滴
+            nvgBeginPath(vg)
+            nvgCircle(vg, cx, cy + 1, dropR * 0.8)
+            nvgStrokeWidth(vg, 1.0)
+            nvgStrokeColor(vg, nvgRGBAf(P.inkWash.r, P.inkWash.g, P.inkWash.b, 0.35))
+            nvgStroke(vg)
+        end
+    end
+end
+
+------------------------------------------------------------
+-- 小地图
+------------------------------------------------------------
+
+local MINIMAP_COLORS = {
+    grass  = { 0.45, 0.55, 0.35 },
+    path   = { 0.65, 0.58, 0.45 },
+    rock   = { 0.50, 0.48, 0.45 },
+    bamboo = { 0.30, 0.48, 0.30 },
+    water  = { 0.30, 0.40, 0.60 },
+    danger = { 0.50, 0.25, 0.35 },
+    wall   = { 0.12, 0.10, 0.08 },
+}
+
+function ExploreScreen:renderMinimap(vg, logW, logH, t)
+    local map = self.map
+    if not map then return end
+
+    local expanded = self.minimapExpanded
+    local scale, mx, my, mw, mh
+
+    if expanded then
+        scale = math.min((logW * 0.65) / map.width, (logH * 0.60) / map.height)
+        mw = map.width * scale
+        mh = map.height * scale
+        mx = (logW - mw) * 0.5
+        my = (logH - mh) * 0.5
+    else
+        scale = math.min(2.5, (logW * 0.22) / map.width)
+        mw = map.width * scale
+        mh = map.height * scale
+        mx = logW - mw - 10
+        my = 55
+    end
+
+    self.minimapBounds = { x = mx, y = my, w = mw, h = mh }
+
+    -- 展开时暗化背景
+    if expanded then
+        nvgBeginPath(vg)
+        nvgRect(vg, 0, 0, logW, logH)
+        nvgFillColor(vg, nvgRGBAf(0, 0, 0, 0.55))
+        nvgFill(vg)
+    end
+
+    -- 地图底框
+    nvgBeginPath(vg)
+    nvgRoundedRect(vg, mx - 2, my - 2, mw + 4, mh + 4, 3)
+    nvgFillColor(vg, nvgRGBAf(0.06, 0.05, 0.04, 0.9))
+    nvgFill(vg)
+    nvgStrokeColor(vg, nvgRGBAf(0.3, 0.25, 0.2, 0.5))
+    nvgStrokeWidth(vg, 1)
+    nvgStroke(vg)
+
+    -- 绘制瓦片
+    for ty = 1, map.height do
+        for tx = 1, map.width do
+            local tile = map.tiles[ty][tx]
+            local fogState = FogOfWar.getState(tx - 1, ty - 1)
+            if fogState ~= FogOfWar.DARK then
+                local col = MINIMAP_COLORS[tile.type] or MINIMAP_COLORS.wall
+                local alpha = fogState == FogOfWar.VISIBLE and 0.9 or 0.4
+                nvgBeginPath(vg)
+                -- y=1 是底部(出生点)，在小地图最下方
+                local sy = my + (map.height - ty) * scale
+                nvgRect(vg, mx + (tx - 1) * scale, sy, scale + 0.5, scale + 0.5)
+                nvgFillColor(vg, nvgRGBAf(col[1], col[2], col[3], alpha))
+                nvgFill(vg)
+            end
+        end
+    end
+
+    -- 实体标记
+    if expanded then
+        -- 撤离点
+        for _, ep in ipairs(map.evacuationPoints) do
+            local fs = FogOfWar.getState(ep.x, ep.y)
+            if fs ~= FogOfWar.DARK then
+                local ex = mx + ep.x * scale + scale * 0.5
+                local ey = my + (map.height - 1 - ep.y) * scale + scale * 0.5
+                nvgBeginPath(vg)
+                nvgCircle(vg, ex, ey, scale * 1.2)
+                nvgFillColor(vg, nvgRGBAf(0.2, 0.6, 0.9, 0.85))
+                nvgFill(vg)
+            end
+        end
+        -- 资源
+        for _, res in ipairs(map.resources) do
+            if not res.collected then
+                local fs = FogOfWar.getState(res.x, res.y)
+                if fs ~= FogOfWar.DARK then
+                    local rx = mx + res.x * scale + scale * 0.5
+                    local ry = my + (map.height - 1 - res.y) * scale + scale * 0.5
+                    nvgBeginPath(vg)
+                    nvgCircle(vg, rx, ry, scale * 0.5)
+                    nvgFillColor(vg, nvgRGBAf(0.3, 0.7, 0.3, fs == FogOfWar.VISIBLE and 0.8 or 0.4))
+                    nvgFill(vg)
+                end
+            end
+        end
+        -- 异兽（仅可见区域）
+        for _, beast in ipairs(self.beasts) do
+            if beast.aiState ~= "captured" and FogOfWar.isEntityVisible(beast.x, beast.y) then
+                local bx = mx + beast.x * scale + scale * 0.5
+                local by = my + (map.height - 1 - beast.y) * scale + scale * 0.5
+                nvgBeginPath(vg)
+                nvgCircle(vg, bx, by, scale * 0.7)
+                nvgFillColor(vg, nvgRGBAf(0.8, 0.2, 0.15, 0.85))
+                nvgFill(vg)
+            end
+        end
+    else
+        -- 折叠模式：只显示撤离点
+        for _, ep in ipairs(map.evacuationPoints) do
+            local fs = FogOfWar.getState(ep.x, ep.y)
+            if fs ~= FogOfWar.DARK then
+                local ex = mx + ep.x * scale + scale * 0.5
+                local ey = my + (map.height - 1 - ep.y) * scale + scale * 0.5
+                nvgBeginPath(vg)
+                nvgCircle(vg, ex, ey, 2.5)
+                nvgFillColor(vg, nvgRGBAf(0.2, 0.6, 0.9, 0.9))
+                nvgFill(vg)
+            end
+        end
+    end
+
+    -- 玩家标记（始终显示）
+    local px = mx + self.playerX * scale + scale * 0.5
+    local py = my + (map.height - 1 - self.playerY) * scale + scale * 0.5
+    local dotR = expanded and 4.5 or 2.5
+    -- 光晕
+    nvgBeginPath(vg)
+    nvgCircle(vg, px, py, dotR + 2)
+    nvgFillColor(vg, nvgRGBAf(1, 0.85, 0.3, 0.3 + math.sin(t * 4) * 0.15))
+    nvgFill(vg)
+    -- 核心
+    nvgBeginPath(vg)
+    nvgCircle(vg, px, py, dotR)
+    nvgFillColor(vg, nvgRGBAf(1, 0.9, 0.35, 1))
+    nvgFill(vg)
+
+    -- 折叠模式标题
+    if not expanded then
+        nvgFontFace(vg, "sans")
+        nvgFontSize(vg, 9)
+        nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_TOP)
+        nvgFillColor(vg, nvgRGBAf(0.6, 0.55, 0.5, 0.7))
+        nvgText(vg, mx + mw * 0.5, my + mh + 3, "[ 点击展开 ]")
+    end
 end
 
 return ExploreScreen

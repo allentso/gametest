@@ -36,10 +36,16 @@ local DEFAULT_DATA = {
     sealerExp = 0,     -- 当前经验值
     schoolProgress = {},-- 流派进度 { [schoolId] = level }
 
+    -- 玩家生命值（跨局持久化，不自动恢复）
+    hp = 10,
+
     -- 每日
     loginDays = 0,
     lastLoginDate = "",
     dailyClaimed = {},
+
+    -- 技能解锁统计
+    moyaRetreatCount = 0,  -- 被墨鸦攻击后成功撤退次数
 
     -- 教学
     tutorialDone = false,

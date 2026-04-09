@@ -56,8 +56,9 @@ function ScreenManager.render(vg, logW, logH, t)
     end
 end
 
--- tap 合成状态
+-- tap / drag 合成状态
 local tapState = { active = false, x = 0, y = 0, time = 0 }
+local dragState = { dragging = false, lastX = 0, lastY = 0 }
 local TAP_DIST = 15    -- 最大偏移(逻辑像素)
 local TAP_TIME = 0.4   -- 最大间隔(秒)
 
@@ -65,31 +66,46 @@ function ScreenManager.onInput(action, sx, sy)
     local top = stack[#stack]
     if not top or not top.onInput then return false end
 
-    -- 合成 tap: down 记录 → up 时判断距离和时间
+    -- 合成 tap / drag_y: down 记录 → move 超阈值后转为 drag → up 时判断 tap
     if action == "down" then
         tapState.active = true
         tapState.x = sx
         tapState.y = sy
         tapState.time = os.clock()
-    elseif action == "up" and tapState.active then
-        tapState.active = false
-        local dx = math.abs(sx - tapState.x)
-        local dy = math.abs(sy - tapState.y)
-        local dt = os.clock() - tapState.time
-        if dx < TAP_DIST and dy < TAP_DIST and dt < TAP_TIME then
-            -- 先发送 tap 事件
-            local handled = top:onInput("tap", sx, sy)
-            if handled then return true end
+        dragState.dragging = false
+        dragState.lastX = sx
+        dragState.lastY = sy
+    elseif action == "up" then
+        if tapState.active then
+            tapState.active = false
+            local dx = math.abs(sx - tapState.x)
+            local dy = math.abs(sy - tapState.y)
+            local dt = os.clock() - tapState.time
+            if dx < TAP_DIST and dy < TAP_DIST and dt < TAP_TIME then
+                local handled = top:onInput("tap", sx, sy)
+                if handled then return true end
+            end
         end
+        dragState.dragging = false
     elseif action == "move" then
-        -- 移动超出范围则取消 tap
+        -- 移动超出范围则取消 tap，开始 drag
         if tapState.active then
             local dx = math.abs(sx - tapState.x)
             local dy = math.abs(sy - tapState.y)
             if dx >= TAP_DIST or dy >= TAP_DIST then
                 tapState.active = false
+                dragState.dragging = true
             end
         end
+        -- 合成 drag_y 事件（发送 Y 增量）
+        if dragState.dragging then
+            local deltaY = sy - dragState.lastY
+            if math.abs(deltaY) > 0.5 then
+                top:onInput("drag_y", sx, deltaY)
+            end
+        end
+        dragState.lastX = sx
+        dragState.lastY = sy
     end
 
     -- 原始事件也转发（ExploreScreen 等需要 down/move/up）

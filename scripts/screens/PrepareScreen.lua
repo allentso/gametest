@@ -1,10 +1,11 @@
---- PrepareScreen - 三步出发准备：选灵境→选流派→配道具
+--- PrepareScreen - 四步出发准备：选灵境→选流派→选技能→配道具
 local InkPalette = require("data.InkPalette")
 local BrushStrokes = require("render.BrushStrokes")
 local BeastData = require("data.BeastData")
 local ScreenManager = require("systems.ScreenManager")
 local GameState = require("systems.GameState")
 local SessionState = require("systems.SessionState")
+local SkillSystem = require("systems.SkillSystem")
 
 local PrepareScreen = {}
 PrepareScreen.__index = PrepareScreen
@@ -33,6 +34,10 @@ local ITEMS = {
     { id = "fogMap",    name = "迷雾残图", category = "item",   desc = "开局揭示25%地图", usage = "自动生效" },
     { id = "beastEye",  name = "兽目珠",   category = "item",   desc = "显示异兽位置15秒", usage = "点击激活" },
     { id = "sealEcho",  name = "封印回响", category = "item",   desc = "压制失败可重试1次", usage = "自动生效" },
+    -- 恢复类道具
+    { id = "lingquanWan", name = "灵泉丸", category = "recovery", desc = "+2HP，使用耗时1秒", usage = "点击使用" },
+    { id = "jianzhulu",   name = "绛珠露", category = "recovery", desc = "+5HP，使用耗时0.5秒", usage = "点击使用" },
+    { id = "fusufu",      name = "复苏符", category = "recovery", desc = "HP归零自动+4HP", usage = "被动触发" },
 }
 
 function PrepareScreen.new(params)
@@ -42,8 +47,11 @@ function PrepareScreen.new(params)
     self.step = 1
     self.selectedBiome = nil
     self.selectedSchool = nil
+    self.selectedSkill = nil
     self.selectedItems = {}
     self.buttons = {}
+    self.itemScrollY = 0
+    self.itemContentH = 0
     return self
 end
 
@@ -52,6 +60,7 @@ function PrepareScreen:onEnter()
     self.step = 1
     self.selectedBiome = nil
     self.selectedSchool = nil
+    self.selectedSkill = nil
     self.selectedItems = {}
     for _, item in ipairs(ITEMS) do
         self.selectedItems[item.id] = 0
@@ -81,9 +90,9 @@ function PrepareScreen:render(vg, logW, logH, t)
     nvgFontFace(vg, "sans")
     nvgFontSize(vg, 12)
     nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_TOP)
-    local stepLabels = { "选择灵境", "选择流派", "配置道具" }
-    for i = 1, 3 do
-        local sx = logW * (0.2 + (i - 1) * 0.3)
+    local stepLabels = { "选择灵境", "选择流派", "选择技能", "配置道具" }
+    for i = 1, 4 do
+        local sx = logW * (0.125 + (i - 1) * 0.25)
         local c = (i == self.step) and P.cinnabar or P.inkWash
         local a = (i == self.step) and 0.85 or 0.4
         nvgFillColor(vg, nvgRGBAf(c.r, c.g, c.b, a * alpha))
@@ -102,6 +111,8 @@ function PrepareScreen:render(vg, logW, logH, t)
     elseif self.step == 2 then
         self:renderSchoolSelect(vg, logW, logH, alpha)
     elseif self.step == 3 then
+        self:renderSkillSelect(vg, logW, logH, alpha)
+    elseif self.step == 4 then
         self:renderItemSelect(vg, logW, logH, alpha)
     end
 end
@@ -230,12 +241,99 @@ function PrepareScreen:renderSchoolSelect(vg, logW, logH, alpha)
     end
 
     if self.selectedSchool then
+        self:renderNextButton(vg, logW, logH, alpha, "选择技能 >")
+    end
+end
+
+------------------------------------------------------------
+-- Step 3: 背刺技能选择
+------------------------------------------------------------
+
+function PrepareScreen:renderSkillSelect(vg, logW, logH, alpha)
+    local P = InkPalette
+
+    nvgFontFace(vg, "sans")
+    nvgFontSize(vg, 20)
+    nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+    nvgFillColor(vg, nvgRGBAf(P.inkStrong.r, P.inkStrong.g, P.inkStrong.b, 0.85 * alpha))
+    nvgText(vg, logW * 0.5, logH * 0.10, "选择背刺技能")
+
+    nvgFontSize(vg, 11)
+    nvgFillColor(vg, nvgRGBAf(P.inkWash.r, P.inkWash.g, P.inkWash.b, 0.6 * alpha))
+    nvgText(vg, logW * 0.5, logH * 0.14, "每次探索携带一种技能")
+
+    local cardW = logW * 0.85
+    local cardH = logH * 0.10
+    local startY = logH * 0.18
+    local gap = 6
+
+    for i, skillId in ipairs(SkillSystem.SKILL_ORDER) do
+        local skill = SkillSystem.SKILLS[skillId]
+        local cy = startY + (i - 1) * (cardH + gap)
+        local unlocked, lockDesc = SkillSystem.isUnlocked(skillId)
+        local selected = self.selectedSkill == skillId
+
+        -- 卡片背景
+        nvgBeginPath(vg)
+        nvgRoundedRect(vg, (logW - cardW) * 0.5, cy, cardW, cardH, 6)
+        local bgColor = selected and P.cinnabar or P.jade
+        local bgAlpha = selected and 0.15 or 0.05
+        nvgFillColor(vg, nvgRGBAf(bgColor.r, bgColor.g, bgColor.b, bgAlpha * alpha))
+        nvgFill(vg)
+
+        if selected then
+            BrushStrokes.inkRect(vg, (logW - cardW) * 0.5, cy, cardW, cardH, P.cinnabar, 0.5, i * 23)
+        end
+
+        local textAlpha = unlocked and 0.85 or 0.3
+        local leftX = (logW - cardW) * 0.5 + 14
+
+        -- 技能类型标记
+        nvgFontSize(vg, 9)
+        nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_MIDDLE)
+        local catColor = (skill.category == "throw") and P.azure or P.indigo
+        nvgFillColor(vg, nvgRGBAf(catColor.r, catColor.g, catColor.b, textAlpha * 0.7 * alpha))
+        local catLabel = (skill.category == "throw") and "投掷" or "法术"
+        nvgText(vg, leftX, cy + cardH * 0.25, catLabel)
+
+        -- 技能名
+        nvgFontSize(vg, 15)
+        nvgFillColor(vg, nvgRGBAf(P.inkStrong.r, P.inkStrong.g, P.inkStrong.b, textAlpha * alpha))
+        nvgText(vg, leftX + 30, cy + cardH * 0.25, skill.name)
+
+        -- 次数
+        nvgFontSize(vg, 10)
+        nvgTextAlign(vg, NVG_ALIGN_RIGHT + NVG_ALIGN_MIDDLE)
+        nvgFillColor(vg, nvgRGBAf(P.gold.r, P.gold.g, P.gold.b, textAlpha * 0.7 * alpha))
+        nvgText(vg, (logW + cardW) * 0.5 - 14, cy + cardH * 0.25, "×" .. skill.maxUses)
+
+        -- 描述 / 锁定提示
+        nvgFontSize(vg, 11)
+        nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_MIDDLE)
+        if unlocked then
+            nvgFillColor(vg, nvgRGBAf(P.inkMedium.r, P.inkMedium.g, P.inkMedium.b, 0.65 * alpha))
+            nvgText(vg, leftX, cy + cardH * 0.7, skill.desc)
+        else
+            nvgFillColor(vg, nvgRGBAf(P.cinnabar.r, P.cinnabar.g, P.cinnabar.b, 0.5 * alpha))
+            nvgText(vg, leftX, cy + cardH * 0.7, lockDesc or "未解锁")
+        end
+
+        -- 点击区域
+        if unlocked then
+            table.insert(self.buttons, {
+                type = "skill", skillId = skillId,
+                x = (logW - cardW) * 0.5, y = cy, w = cardW, h = cardH,
+            })
+        end
+    end
+
+    if self.selectedSkill then
         self:renderNextButton(vg, logW, logH, alpha, "配置道具 >")
     end
 end
 
 ------------------------------------------------------------
--- Step 3: 道具配置
+-- Step 4: 道具配置
 ------------------------------------------------------------
 
 function PrepareScreen:renderItemSelect(vg, logW, logH, alpha)
@@ -263,94 +361,146 @@ function PrepareScreen:renderItemSelect(vg, logW, logH, alpha)
     nvgFillColor(vg, nvgRGBAf(slotColor.r, slotColor.g, slotColor.b, 0.7 * alpha))
     nvgText(vg, logW * 0.5, logH * 0.16, string.format("道具格: %d / %d", usedSlots, maxSlots))
 
-    local cardW = logW * 0.85
-    local cardH = 62
-    local startY = logH * 0.20
-    local gap = 5
-    local cardX = (logW - cardW) * 0.5
+    -- 双列紧凑布局（按分类分组）
+    local groups = {
+        { label = "封灵器", cat = "sealer",   color = P.indigo },
+        { label = "探索道具", cat = "item",   color = P.jade },
+        { label = "恢复道具", cat = "recovery", color = P.cinnabar },
+    }
+    local margin = 8
+    local colGap = 6
+    local totalW = logW - margin * 2
+    local colW = (totalW - colGap) * 0.5
+    local cardH = 56
+    local rowGap = 5
+    local groupGap = 10
+    local scrollY = self.itemScrollY or 0
+    local curY = logH * 0.19 + scrollY
 
-    for i, item in ipairs(ITEMS) do
-        local cy = startY + (i - 1) * (cardH + gap)
-        local stock = GameState.getResource(item.id)
-        local sel = self.selectedItems[item.id] or 0
-
-        nvgBeginPath(vg)
-        nvgRoundedRect(vg, cardX, cy, cardW, cardH, 4)
-        nvgFillColor(vg, nvgRGBAf(P.jade.r, P.jade.g, P.jade.b, 0.05 * alpha))
-        nvgFill(vg)
-
-        -- 名称
-        nvgFontSize(vg, 14)
+    for _, grp in ipairs(groups) do
+        -- 分组标签
+        curY = curY + 2
+        nvgFontSize(vg, 11)
         nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_MIDDLE)
-        nvgFillColor(vg, nvgRGBAf(P.inkStrong.r, P.inkStrong.g, P.inkStrong.b, 0.8 * alpha))
-        nvgText(vg, cardX + 12, cy + cardH * 0.28, item.name)
+        nvgFillColor(vg, nvgRGBAf(grp.color.r, grp.color.g, grp.color.b, 0.6 * alpha))
+        nvgText(vg, margin, curY + 6, "── " .. grp.label .. " ──")
+        curY = curY + 16
 
-        -- 效果描述
-        nvgFontSize(vg, 10)
-        nvgFillColor(vg, nvgRGBAf(P.inkMedium.r, P.inkMedium.g, P.inkMedium.b, 0.6 * alpha))
-        nvgText(vg, cardX + 12, cy + cardH * 0.58, item.desc or "")
-
-        -- 使用方式标签
-        if item.usage then
-            local usageColor = (item.usage == "点击激活") and P.jade or P.azure
-            nvgFontSize(vg, 9)
-            nvgFillColor(vg, nvgRGBAf(usageColor.r, usageColor.g, usageColor.b, 0.55 * alpha))
-            nvgText(vg, cardX + 12, cy + cardH * 0.82, item.usage)
+        -- 收集本组道具
+        local groupItems = {}
+        for _, item in ipairs(ITEMS) do
+            if item.category == grp.cat then
+                table.insert(groupItems, item)
+            end
         end
 
-        -- 库存
-        nvgFontSize(vg, 11)
-        nvgFillColor(vg, nvgRGBAf(P.inkMedium.r, P.inkMedium.g, P.inkMedium.b, 0.55 * alpha))
-        nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_MIDDLE)
-        nvgText(vg, cardX + cardW * 0.48, cy + cardH * 0.28, "库存:" .. stock)
+        -- 双列排列
+        for idx = 1, #groupItems, 2 do
+            for col = 0, 1 do
+                local item = groupItems[idx + col]
+                if not item then break end
 
-        -- 已选数量
-        nvgFontSize(vg, 16)
-        nvgTextAlign(vg, NVG_ALIGN_RIGHT + NVG_ALIGN_MIDDLE)
-        nvgFillColor(vg, nvgRGBAf(P.inkStrong.r, P.inkStrong.g, P.inkStrong.b, 0.85 * alpha))
-        nvgText(vg, cardX + cardW - 50, cy + cardH * 0.45, tostring(sel))
+                local cx = margin + col * (colW + colGap)
+                local cy = curY
+                local stock = GameState.getResource(item.id)
+                local sel = self.selectedItems[item.id] or 0
 
-        -- +/- 按钮
-        local btnR = 12
-        local minusCX = cardX + cardW - 80
-        local plusCX = cardX + cardW - 18
-        local btnCY = cy + cardH * 0.45
+                -- 卡片背景
+                nvgBeginPath(vg)
+                nvgRoundedRect(vg, cx, cy, colW, cardH, 4)
+                nvgFillColor(vg, nvgRGBAf(grp.color.r, grp.color.g, grp.color.b, 0.05 * alpha))
+                nvgFill(vg)
+                nvgBeginPath(vg)
+                nvgRoundedRect(vg, cx, cy, colW, cardH, 4)
+                nvgStrokeWidth(vg, 0.5)
+                nvgStrokeColor(vg, nvgRGBAf(grp.color.r, grp.color.g, grp.color.b, 0.15 * alpha))
+                nvgStroke(vg)
 
-        nvgBeginPath(vg)
-        nvgCircle(vg, minusCX, btnCY, btnR)
-        nvgStrokeWidth(vg, 1)
-        nvgStrokeColor(vg, nvgRGBAf(P.inkMedium.r, P.inkMedium.g, P.inkMedium.b, 0.4 * alpha))
-        nvgStroke(vg)
-        nvgFontSize(vg, 14)
-        nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
-        nvgFillColor(vg, nvgRGBAf(P.inkMedium.r, P.inkMedium.g, P.inkMedium.b, 0.6 * alpha))
-        nvgText(vg, minusCX, btnCY, "-")
+                -- 第一行：名称 + 库存
+                nvgFontSize(vg, 13)
+                nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_MIDDLE)
+                nvgFillColor(vg, nvgRGBAf(P.inkStrong.r, P.inkStrong.g, P.inkStrong.b, 0.8 * alpha))
+                nvgText(vg, cx + 8, cy + 12, item.name)
 
-        nvgBeginPath(vg)
-        nvgCircle(vg, plusCX, btnCY, btnR)
-        nvgStrokeWidth(vg, 1)
-        nvgStrokeColor(vg, nvgRGBAf(P.jade.r, P.jade.g, P.jade.b, 0.5 * alpha))
-        nvgStroke(vg)
-        nvgFontSize(vg, 14)
-        nvgFillColor(vg, nvgRGBAf(P.jade.r, P.jade.g, P.jade.b, 0.7 * alpha))
-        nvgText(vg, plusCX, btnCY, "+")
+                nvgFontSize(vg, 9)
+                nvgTextAlign(vg, NVG_ALIGN_RIGHT + NVG_ALIGN_MIDDLE)
+                nvgFillColor(vg, nvgRGBAf(P.inkLight.r, P.inkLight.g, P.inkLight.b, 0.55 * alpha))
+                nvgText(vg, cx + colW - 6, cy + 12, "库存:" .. stock)
 
-        table.insert(self.buttons, {
-            type = "minus", itemId = item.id,
-            x = minusCX - btnR, y = btnCY - btnR, w = btnR * 2, h = btnR * 2,
-        })
-        table.insert(self.buttons, {
-            type = "plus", itemId = item.id,
-            x = plusCX - btnR, y = btnCY - btnR, w = btnR * 2, h = btnR * 2,
-        })
+                -- 第二行：描述
+                nvgFontSize(vg, 9)
+                nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_MIDDLE)
+                nvgFillColor(vg, nvgRGBAf(P.inkMedium.r, P.inkMedium.g, P.inkMedium.b, 0.55 * alpha))
+                nvgText(vg, cx + 8, cy + 27, item.desc or "")
+
+                -- 第三行：使用方式 + 数量控制
+                if item.usage then
+                    local usageColor = (item.usage == "点击激活" or item.usage == "点击使用") and P.jade or P.azure
+                    nvgFontSize(vg, 8)
+                    nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_MIDDLE)
+                    nvgFillColor(vg, nvgRGBAf(usageColor.r, usageColor.g, usageColor.b, 0.5 * alpha))
+                    nvgText(vg, cx + 8, cy + 42, item.usage)
+                end
+
+                -- 数量控制：[-] 数字 [+]
+                local btnR = 10
+                local ctrlCY = cy + 43
+                local plusCX = cx + colW - 10
+                local minusCX = plusCX - 46
+                local numCX = (minusCX + plusCX) * 0.5
+
+                nvgBeginPath(vg)
+                nvgCircle(vg, minusCX, ctrlCY, btnR)
+                nvgStrokeWidth(vg, 0.8)
+                nvgStrokeColor(vg, nvgRGBAf(P.inkMedium.r, P.inkMedium.g, P.inkMedium.b, 0.35 * alpha))
+                nvgStroke(vg)
+                nvgFontSize(vg, 12)
+                nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+                nvgFillColor(vg, nvgRGBAf(P.inkMedium.r, P.inkMedium.g, P.inkMedium.b, 0.55 * alpha))
+                nvgText(vg, minusCX, ctrlCY, "-")
+
+                nvgFontSize(vg, 14)
+                nvgFillColor(vg, nvgRGBAf(P.inkStrong.r, P.inkStrong.g, P.inkStrong.b, 0.8 * alpha))
+                nvgText(vg, numCX, ctrlCY, tostring(sel))
+
+                nvgBeginPath(vg)
+                nvgCircle(vg, plusCX, ctrlCY, btnR)
+                nvgStrokeWidth(vg, 0.8)
+                nvgStrokeColor(vg, nvgRGBAf(grp.color.r, grp.color.g, grp.color.b, 0.45 * alpha))
+                nvgStroke(vg)
+                nvgFontSize(vg, 12)
+                nvgFillColor(vg, nvgRGBAf(grp.color.r, grp.color.g, grp.color.b, 0.65 * alpha))
+                nvgText(vg, plusCX, ctrlCY, "+")
+
+                table.insert(self.buttons, {
+                    type = "minus", itemId = item.id,
+                    x = minusCX - btnR, y = ctrlCY - btnR, w = btnR * 2, h = btnR * 2,
+                })
+                table.insert(self.buttons, {
+                    type = "plus", itemId = item.id,
+                    x = plusCX - btnR, y = ctrlCY - btnR, w = btnR * 2, h = btnR * 2,
+                })
+            end
+            curY = curY + cardH + rowGap
+        end
+        curY = curY + groupGap
     end
 
-    -- 出发按钮
+    -- 记录内容总高度（用于滚动限制）
+    self.itemContentH = curY - scrollY - logH * 0.19
+
+    -- 出发按钮（固定在底部）
     local mainBtnW = 180
     local mainBtnH = 44
     local mainBtnX = (logW - mainBtnW) * 0.5
-    local mainBtnY = logH * 0.85
+    local mainBtnY = logH - mainBtnH - 12
     local breathe = 1.0 + math.sin(self.t * 2) * 0.03
+
+    -- 按钮背景遮罩（底部渐变）
+    nvgBeginPath(vg)
+    nvgRect(vg, 0, mainBtnY - 20, logW, mainBtnH + 32)
+    nvgFillColor(vg, nvgRGBAf(P.paper.r, P.paper.g, P.paper.b, 0.9))
+    nvgFill(vg)
 
     nvgBeginPath(vg)
     nvgRoundedRect(vg, mainBtnX, mainBtnY, mainBtnW * breathe, mainBtnH, 6)
@@ -408,6 +558,13 @@ end
 ------------------------------------------------------------
 
 function PrepareScreen:onInput(action, sx, sy)
+    -- 道具配置页支持上下拖拽滚动
+    if action == "drag_y" and self.step == 4 then
+        local maxScroll = math.max(0, self.itemContentH - (graphics:GetHeight() / graphics:GetDPR()) * 0.60)
+        self.itemScrollY = math.max(-maxScroll, math.min(0, self.itemScrollY + sy))
+        return true
+    end
+
     if action ~= "tap" then return false end
 
     for _, btn in ipairs(self.buttons) do
@@ -420,6 +577,10 @@ function PrepareScreen:onInput(action, sx, sy)
 
             elseif btn.type == "school" then
                 self.selectedSchool = btn.schoolId
+                return true
+
+            elseif btn.type == "skill" then
+                self.selectedSkill = btn.skillId
                 return true
 
             elseif btn.type == "next" then
@@ -459,6 +620,7 @@ function PrepareScreen:onInput(action, sx, sy)
                 SessionState.reset()
                 SessionState.selectedBiome = self.selectedBiome
                 SessionState.selectedSchool = self.selectedSchool
+                SessionState.selectedSkill = self.selectedSkill
 
                 for id, count in pairs(self.selectedItems) do
                     if count > 0 then

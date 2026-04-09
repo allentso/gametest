@@ -54,7 +54,9 @@ function SuppressOverlay:onInput(action, sx, sy)
     if s.mode == "charge" then
         if action == "down" then
             SuppressSystem.chargeStart()
-        elseif action == "up" then
+        elseif action == "up" or action == "tap" then
+            -- tap 事件由 ScreenManager 在 up 之前合成发出，
+            -- 若被消费会阻止原始 up 到达，因此 tap 也需触发释放
             self:handleResult(SuppressSystem.chargeRelease())
         end
         return true

@@ -42,6 +42,7 @@ function SessionState.reset()
     SessionState.sealEchoUsed = false
     SessionState.selectedBiome = nil
     SessionState.selectedSchool = nil
+    SessionState.selectedSkill = nil    -- 背刺技能选择
 end
 
 function SessionState.addContract(contract)

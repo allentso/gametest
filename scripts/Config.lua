@@ -9,9 +9,9 @@ Config.ATMOSPHERE = true
 Config.INK_FIBERS = true
 Config.DEVICE_ID = ""
 
--- 地图规格（竖屏 20×30）
-Config.MAP_WIDTH = 20
-Config.MAP_HEIGHT = 30
+-- 地图规格（竖屏 30×45）
+Config.MAP_WIDTH = 30
+Config.MAP_HEIGHT = 45
 
 -- 玩家
 Config.VISION_RADIUS = 4.5
