@@ -1,5 +1,5 @@
 .build/
 dist/
 .tmp/
-logs/
 .project/
+logs/
