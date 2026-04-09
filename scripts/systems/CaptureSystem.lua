@@ -53,12 +53,6 @@ function CaptureSystem.attemptCapture(beast, sealerTier, inventory, sealerKey)
         SessionState.t5Used = true
     end
 
-    -- T4天命盘：首次失败不消耗
-    local consumeSealer = true
-    if sealerTier == "T4" and not SessionState.t4FailUsed then
-        consumeSealer = false
-    end
-
     if math.random() < baseRate then
         -- 成功：消耗封灵器
         inventory[sealerKey] = inventory[sealerKey] - 1

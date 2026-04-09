@@ -253,7 +253,7 @@ function SkillSystem.isBackstab(playerX, playerY, beast)
     -- 异兽面朝方向 vs 玩家相对异兽方向
     local dx = playerX - beast.x
     local dy = playerY - beast.y
-    local angleToPlayer = math.atan(dy, dx)
+    local angleToPlayer = math.atan2(dy, dx)
     local facingAngle = beast.facing
     -- 背刺角度：玩家在异兽面朝方向的反面±60度范围
     local diff = math.abs(angleToPlayer - facingAngle)
@@ -277,7 +277,7 @@ local function findBeastsInRange(beasts, centerX, centerY, radius, playerFacing,
             if dist <= radius then
                 if arc and playerFacing then
                     -- 锥形判定
-                    local angleToB = math.atan(beast.y - centerY, beast.x - centerX)
+                    local angleToB = math.atan2(beast.y - centerY, beast.x - centerX)
                     local diff = math.abs(angleToB - playerFacing)
                     if diff > math.pi then diff = 2 * math.pi - diff end
                     if diff <= math.rad(arc / 2) then
@@ -297,8 +297,9 @@ end
 --- @param playerY number
 --- @param playerFacing number 玩家朝向（弧度）
 --- @param beasts table 场上异兽列表
+--- @param inDangerZone boolean 玩家是否处于瘴气区
 --- @return boolean 是否成功使用
-function SkillSystem.useSkill(playerX, playerY, playerFacing, beasts)
+function SkillSystem.useSkill(playerX, playerY, playerFacing, beasts, inDangerZone)
     if not SkillSystem.activeSkill then return false end
     if SkillSystem.usesLeft <= 0 then
         EventBus.emit("skill_fail", { reason = "uses_depleted" })
@@ -319,9 +320,9 @@ function SkillSystem.useSkill(playerX, playerY, playerFacing, beasts)
     -- 流派战斗加成
     local effect = SchoolEffects.get()
 
-    -- 贪渊流大成：高危区不消耗次数
+    -- 贪渊流大成：仅在瘴气区内不消耗次数
     local consumed = true
-    if effect and effect.dangerUnlimitedSkills then
+    if effect and effect.dangerUnlimitedSkills and inDangerZone then
         consumed = false
     end
 

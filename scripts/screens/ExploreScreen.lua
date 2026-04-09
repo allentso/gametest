@@ -89,6 +89,8 @@ function ExploreScreen.new(params)
 
     -- 墨鸦墨迹系统
     self.inkPatches = {}
+    -- 驱散法净化区域
+    self.purifiedZones = {}
 
     -- 玩家静止计时（白泽凝视用）
     self.playerStillTimer = 0
@@ -336,8 +338,29 @@ function ExploreScreen:onEnter()
         self:addToast(data.name .. "已布置")
     end, self)
     EventBus.on("skill_explosion", function(data)
-        -- 爆炸视觉效果
-        self.screenShake = 0.3
+        self.shakeTimer = 0.3
+        self.shakeIntensity = 4
+    end, self)
+    EventBus.on("player_debuffs_cleared", function(data)
+        CombatSystem.clearAllDebuffs()
+        self:addToast("身上异状已驱散")
+    end, self)
+    EventBus.on("ink_cleared", function(data)
+        local cx, cy, r = data.x, data.y, data.radius
+        for i = #self.inkPatches, 1, -1 do
+            local p = self.inkPatches[i]
+            local dx, dy = p.x - cx, p.y - cy
+            if dx * dx + dy * dy <= r * r then
+                table.remove(self.inkPatches, i)
+            end
+        end
+    end, self)
+    EventBus.on("miasma_purified", function(data)
+        table.insert(self.purifiedZones, {
+            x = data.x, y = data.y,
+            radius = data.radius,
+            timer = data.duration,
+        })
     end, self)
     EventBus.on("beast_stunned", function(data)
         local beast = data.beast
@@ -537,6 +560,14 @@ function ExploreScreen:update(dt)
         end
     end
 
+    -- 净化区域倒计时
+    for i = #self.purifiedZones, 1, -1 do
+        self.purifiedZones[i].timer = self.purifiedZones[i].timer - dt
+        if self.purifiedZones[i].timer <= 0 then
+            table.remove(self.purifiedZones, i)
+        end
+    end
+
     -- 迷雾更新（竹林中视野缩减至3格，噬天被动+1格，追迹流派+视距）
     local visionRadius = Config.VISION_RADIUS
     if self.playerInBamboo then visionRadius = 3.0 end
@@ -643,8 +674,17 @@ function ExploreScreen:updatePlayerMovement(dt)
     -- 竹林隐蔽状态（供BeastAI使用）
     self.playerInBamboo = (tileType == "bamboo")
 
-    -- 瘴气地形HP伤害（贪渊流派可减免）
+    -- 瘴气地形HP伤害（贪渊流派可减免；净化区域内免疫）
     local inMiasma = (tileType == "danger")
+    if inMiasma then
+        for _, zone in ipairs(self.purifiedZones) do
+            local zdx, zdy = self.playerX - zone.x, self.playerY - zone.y
+            if zdx * zdx + zdy * zdy <= zone.radius * zone.radius then
+                inMiasma = false
+                break
+            end
+        end
+    end
     local greedEffect = getSchoolEffect()
     local miasmaImmune = greedEffect and greedEffect.dangerImmune or false
     local miasmaHalf = greedEffect and greedEffect.dangerDrainHalf or false
@@ -1510,7 +1550,11 @@ function ExploreScreen:onInput(action, sx, sy)
             local dx = sx - sb.x
             local dy = sy - sb.y
             if (dx * dx + dy * dy) < (sb.r * sb.r) then
-                SkillSystem.useSkill(self.playerX, self.playerY, self.playerFacing, self.beasts)
+                local tx = math.floor(self.playerX)
+                local ty = math.floor(self.playerY)
+                local tile = self.map:getTile(tx, ty)
+                local inDanger = tile and tile.type == "danger" or false
+                SkillSystem.useSkill(self.playerX, self.playerY, self.playerFacing, self.beasts, inDanger)
                 return true
             end
         end
@@ -1845,7 +1889,7 @@ function ExploreScreen:renderEntities(vg, logW, logH, t)
 
     -- 恢复道具施法进度（玩家头顶）
     if self.recoveryUsing then
-        local castProg = 1.0 - (self.recoveryUsing.timer / (self.recoveryUsing.castTime or 2.0))
+        local castProg = 1.0 - (self.recoveryUsing.timer / (self.recoveryUsing.maxTime or 2.0))
         castProg = math.max(0, math.min(1, castProg))
         -- 圆弧进度
         nvgBeginPath(vg)
@@ -2238,7 +2282,7 @@ function ExploreScreen:renderBottomBar(vg, logW, logH, t)
             count = jzCount,
             active = jzCasting,
             timer = jzCasting and self.recoveryUsing.timer or nil,
-            color = P.crimson,
+            color = P.cinnabar,
             usable = jzCount > 0 and not self.recoveryUsing and not CombatSystem.collapsed
                 and CombatSystem.hp < CombatSystem.MAX_HP,
         })

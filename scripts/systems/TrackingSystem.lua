@@ -24,7 +24,9 @@ function TrackingSystem.reset()
     TrackingSystem.ssrTriggered = false
     TrackingSystem.extraFlashBonus = 0
     TrackingSystem.ssrReduceBonus = 0
+    TrackingSystem.schoolFlashBonus = 0
     TrackingSystem.investigatedTypes = {}
+    TrackingSystem.habitDeduced = false
 end
 
 function TrackingSystem.getInvestigateTime(clueType, hasTraceAsh)
