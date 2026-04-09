@@ -29,7 +29,7 @@ BeastAI.STATE = {
 BeastAI.QUALITY_SENSE_BONUS = { R = 0, SR = 1, SSR = 2 }
 
 -- 警告事件冷却（秒）：同一异兽在此间隔内只发射一次 beast_warn
-local WARN_COOLDOWN = 8.0
+local WARN_COOLDOWN = 3.0
 
 --- 带冷却的警告事件发射
 local function emitWarnThrottled(beast)
