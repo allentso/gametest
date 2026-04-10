@@ -1,0 +1,262 @@
+[2026-04-08 19:29:56] 📋 ==================================================
+[2026-04-08 19:29:56] 📋 构建开始
+[2026-04-08 19:29:56] 📋 ==================================================
+[2026-04-08 19:29:56] 📋 日志文件: /workspace/logs/build/build_20260408_192956.log
+[2026-04-08 19:29:56] 📋 入口文件: /workspace/scripts/main.lua
+[2026-04-08 19:29:56] 📋 脚本目录: /workspace/scripts
+[2026-04-08 19:29:56] 📋 工作目录: /workspace
+[2026-04-08 19:29:56] 📋 MCP 环境: production
+[2026-04-08 19:29:56] 📋 纹理压缩限制: 每次最多 10 张
+[2026-04-08 19:29:56] 📋 步骤 1: 验证入口 Lua 文件存在
+[2026-04-08 19:29:56] ✅ 入口文件存在
+[2026-04-08 19:29:56] 📋 ⏱️  耗时: 0.01s
+[2026-04-08 19:29:56] 📋 步骤 2: 验证 Lua 文件包含 Start() 函数
+[2026-04-08 19:29:56] ✅ Start() 函数验证通过
+[2026-04-08 19:29:56] 📋 ⏱️  耗时: 0.01s
+[2026-04-08 19:29:56] 📋 步骤 3: 验证 scripts 目录存在
+[2026-04-08 19:29:56] ✅ scripts 目录存在
+[2026-04-08 19:29:56] 📋 ⏱️  耗时: 0.09s
+[2026-04-08 19:29:56] 📋 步骤 4: 启动 Lua LSP watch 模式
+[2026-04-08 19:29:56] 📋 LSP watch 已运行 (PID: 209)
+[2026-04-08 19:29:56] ✅ Lua LSP 检查通过: 0 个错误
+[2026-04-08 19:29:56] 📋 ⏱️  耗时: 0.05s
+[2026-04-08 19:29:56] 📋 步骤 5: 检查并初始化 .project 目录
+[2026-04-08 19:29:56] ✅ .project 目录已正确初始化
+[2026-04-08 19:29:56] 📋 ⏱️  耗时: 0.03s
+[2026-04-08 19:29:56] 📋 步骤 5.6: 检查/更新 multiplayer 配置
+[2026-04-08 19:29:56] ✅ 使用本地已有的 multiplayer 配置
+[2026-04-08 19:29:56] 📋 ⏱️  耗时: 0.03s
+[2026-04-08 19:29:56] 📋 步骤 6: 更新 project.json 的 entry
+[2026-04-08 19:29:56] 📋 更新 project.json: /workspace/.project/project.json
+[2026-04-08 19:29:56] 📋   设置 entry: main.lua
+[2026-04-08 19:29:56] ✅ project.json 更新完成
+[2026-04-08 19:29:56] 📋 步骤 6.1: 检查 project_id 一致性
+[2026-04-08 19:29:56] ✅ project_id 一致性检查通过: p_gixd
+[2026-04-08 19:29:56] 📋 ⏱️  耗时: 0.07s
+[2026-04-08 19:29:56] 📋 未获取到远端版本号，跳过版本锁定
+[2026-04-08 19:29:56] 📋 步骤 7: 调用 project_builder.py 进行构建
+[2026-04-08 19:29:56] 📋 已设置 AssetsCooking 可执行权限: /home/Maker/.sce/build/AssetsCooking
+[2026-04-08 19:29:56] 📋 已设置 TileTerrainCLI 可执行权限: /workspace/.cli/TileTerrainCLI
+[2026-04-08 19:29:56] 📋 已设置 download_tile_resources.py 可执行权限: /workspace/.cli/download_tile_resources.py
+[2026-04-08 19:29:56] 📋 执行脚本: /home/Maker/.sce/build/project_builder.py
+[2026-04-08 19:29:56] 📋 参数: --project /workspace --platform all --cooking /home/Maker/.sce/build/AssetsCooking --cooking-limit 10 --no-7z
+[2026-04-08 19:29:56] 📋 Python: python3
+[2026-04-08 19:30:04] 📋 project_builder.py stdout:
+[2026-04-08 19:30:04] 📋   [INFO] 开始构建项目: /workspace [平台: all]
+[2026-04-08 19:30:04] 📋   [INFO] [1/16] 初始化构建目录...
+[2026-04-08 19:30:04] 📋   [INFO]   完成 (0.03s)
+[2026-04-08 19:30:04] 📋   [INFO] [2/16] 加载配置...
+[2026-04-08 19:30:04] 📋   [INFO]   解析平台配置: all
+[2026-04-08 19:30:04] 📋   [INFO]   项目: p_gixd v1.0.0
+[2026-04-08 19:30:04] 📋   [INFO]   入口: main.lua
+[2026-04-08 19:30:04] 📋   [INFO]   输出: /workspace/.project/../dist/1.0.0
+[2026-04-08 19:30:04] 📋   [INFO]   构建号: 21
+[2026-04-08 19:30:04] 📋   [INFO]   完成 (0.02s)
+[2026-04-08 19:30:04] 📋   [INFO] [3/16] 加载远程资源...
+[2026-04-08 19:30:04] 📋   [INFO]   加载远端来源: engine (tag: stable)
+[2026-04-08 19:30:04] 📋   [INFO]     导入 4 个远端资源: engine
+[2026-04-08 19:30:04] 📋   [INFO]   加载远端来源: engine-res (tag: stable)
+[2026-04-08 19:30:04] 📋   [INFO]     导入 1224 个远端资源: engine-res
+[2026-04-08 19:30:04] 📋   [INFO]   加载远端来源: official-res (tag: stable)
+[2026-04-08 19:30:04] 📋   [INFO]     导入 26579 个远端资源: official-res
+[2026-04-08 19:30:04] 📋   [INFO]   完成 (1.45s)
+[2026-04-08 19:30:04] 📋   [INFO] [4/16] 注入固定引用...
+[2026-04-08 19:30:04] 📋   [INFO]   已确认固定引用: 1 个（含已存在资源）
+[2026-04-08 19:30:04] 📋   [INFO]   完成 (0.00s)
+[2026-04-08 19:30:04] 📋   [INFO] [5/16] 扫描本地资源...
+[2026-04-08 19:30:04] 📋   [INFO]   扫描目录: ../assets (prefix: ../assets)
+[2026-04-08 19:30:04] 📋   [INFO]   生成 meta: beast_fox_20260408110836.png -> Eqyz6flI...
+[2026-04-08 19:30:04] 📋   [INFO]   生成 meta: beast_stone_20260408110843.png -> Gr8IkT33...
+[2026-04-08 19:30:04] 📋   [INFO]   生成 meta: clue_footprint_20260408111232.png -> GQuNEX7v...
+[2026-04-08 19:30:04] 📋   [INFO]   生成 meta: clue_footprint_20260408111736.png -> D1ZBwbqF...
+[2026-04-08 19:30:04] 📋   [INFO]   生成 meta: clue_footprint_20260408112231.png -> AqVxecQm...
+[2026-04-08 19:30:04] 📋   [INFO]   生成 meta: clue_nest_20260408111058.png -> BZhrSdwV...
+[2026-04-08 19:30:04] 📋   [INFO]   生成 meta: clue_nest_20260408111723.png -> DZVmAS3z...
+[2026-04-08 19:30:04] 📋   [INFO]   生成 meta: clue_nest_20260408112851.png -> Eh7SaXy9...
+[2026-04-08 19:30:04] 📋   [INFO]   生成 meta: clue_resonance_20260408111554.png -> DZhaeX4Y...
+[2026-04-08 19:30:04] 📋   [INFO]   生成 meta: clue_resonance_20260408112055.png -> HNsRgXsk...
+[2026-04-08 19:30:04] 📋   [INFO]   生成 meta: clue_resonance_20260408112759.png -> G2lNicNz...
+[2026-04-08 19:30:04] 📋   [INFO]   生成 meta: clue_resonance_20260408112912.png -> A0qVYUpc...
+[2026-04-08 19:30:04] 📋   [INFO]   生成 meta: clue_scentmark_20260408111329.png -> B5JGSYVX...
+[2026-04-08 19:30:04] 📋   [INFO]   生成 meta: clue_scentmark_20260408111718.png -> ByKSOQaJ...
+[2026-04-08 19:30:04] 📋   [INFO]   生成 meta: clue_scentmark_20260408112915.png -> EdFFEb2H...
+[2026-04-08 19:30:04] 📋   [INFO]   生成 meta: env_grass_20260408111601.png -> GaZ6ac7V...
+[2026-04-08 19:30:04] 📋   [INFO]   生成 meta: env_rock_20260408111558.png -> EW_XeT-3...
+[2026-04-08 19:30:04] 📋   [INFO]   生成 meta: evac_portal_20260408111617.png -> BVISyTDM...
+[2026-04-08 19:30:04] 📋   [INFO]   生成 meta: item_beasteye_20260408110919.png -> AhInQWXR...
+[2026-04-08 19:30:04] 📋   [INFO]   生成 meta: item_lingshi_20260408110922.png -> Fyc2kaiP...
+[2026-04-08 19:30:04] 📋   [INFO]   生成 meta: item_mirrorsand_20260408110911.png -> EUm5kVYJ...
+[2026-04-08 19:30:04] 📋   [INFO]   生成 meta: item_sealecho_20260408110904.png -> A-GcsQup...
+[2026-04-08 19:30:04] 📋   [INFO]   生成 meta: item_shouhun_20260408110912.png -> HdkPcU1e...
+[2026-04-08 19:30:04] 📋   [INFO]   生成 meta: item_soulcharm_20260408110921.png -> B0shIZ0c...
+[2026-04-08 19:30:04] 📋   [INFO]   生成 meta: item_tianjing_20260408110924.png -> EQwUIZf4...
+[2026-04-08 19:30:04] 📋   [INFO]   生成 meta: item_traceash_20260408110913.png -> EKsO6VC6...
+[2026-04-08 19:30:04] 📋   [INFO]   生成 meta: player_sealer_20260408110840.png -> AdG3cZAp...
+[2026-04-08 19:30:04] 📋   [INFO]   扫描目录: ../scripts (prefix: ../scripts)
+[2026-04-08 19:30:04] 📋   [INFO]   发现资源: 79 个
+[2026-04-08 19:30:04] 📋   [INFO]   完成 (1.09s)
+[2026-04-08 19:30:04] 📋   [INFO] [6/16] 处理配置文件运行时变体...
+[2026-04-08 19:30:04] 📋   [INFO]   处理配置文件运行时变体: settings.json
+[2026-04-08 19:30:04] 📋   [INFO]     UUID: 1KBoRJYzTFms0ZW0yakLOA, hash: 82e0a33f
+[2026-04-08 19:30:04] 📋   [INFO]     自动添加 #config 到 preload_groups
+[2026-04-08 19:30:04] 📋   [INFO]   完成 (0.04s)
+[2026-04-08 19:30:04] 📋   [INFO] [7/16] 解析别名...
+[2026-04-08 19:30:04] 📋   [INFO]   解析别名: 0 个
+[2026-04-08 19:30:04] 📋   [INFO]   完成 (0.00s)
+[2026-04-08 19:30:04] 📋   [INFO] [8/16] 分配分组...
+[2026-04-08 19:30:04] 📋   [INFO]   添加远端资源: 1224 个
+[2026-04-08 19:30:05] 📋   [INFO]   分组完成，总资源: 1304 个
+[2026-04-08 19:30:05] 📋   [INFO]   完成 (0.01s)
+[2026-04-08 19:30:05] 📋   [INFO] [9/16] 展开引用...
+[2026-04-08 19:30:05] 📋   [INFO]   递归收集 uuid:// 和 alias:// 引用...（全量模式（兼容旧二进制））
+[2026-04-08 19:30:05] 📋   [INFO]   递归收集了 61 个被引用资源
+[2026-04-08 19:30:05] 📋   [INFO]   组继承: 122 个分组被传播
+[2026-04-08 19:30:05] 📋   [INFO]   #blocking 组: 918 个阻塞类型资源
+[2026-04-08 19:30:05] 📋   [INFO]   完成 (0.08s)
+[2026-04-08 19:30:05] 📋   [INFO] [10/16] 扫描变体...
+[2026-04-08 19:30:05] 📋   [INFO]   完成 (0.00s)
+[2026-04-08 19:30:05] 📋   [INFO] [11/16] 资产烘焙...
+[2026-04-08 19:30:05] 📋   [INFO]   使用 AssetsCooking: /home/Maker/.sce/build/AssetsCooking
+[2026-04-08 19:30:05] 📋   [INFO]   发现 37 个纹理文件
+[2026-04-08 19:30:05] 📋   [INFO]   生成 tasks.json: 37 个任务
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [BZhrSdwV-Zx6XaQ8MsFW4NMv_093eaea9@ios]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [BZhrSdwV-Zx6XaQ8MsFW4NMv_093eaea9@android]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [BZhrSdwV-Zx6XaQ8MsFW4NMv_093eaea9@windows]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [DZVmAS3z3p3HAFlbOQfYt2LG_6d927107@ios]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [DZVmAS3z3p3HAFlbOQfYt2LG_6d927107@android]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [DZVmAS3z3p3HAFlbOQfYt2LG_6d927107@windows]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [Eh7SaXy90hTPkMnAXbynY_Di_a81468c4@ios]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [Eh7SaXy90hTPkMnAXbynY_Di_a81468c4@android]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [Eh7SaXy90hTPkMnAXbynY_Di_a81468c4@windows]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [DZhaeX4Y853nIIIvaG8hzjhX_ddb608f3@ios]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [DZhaeX4Y853nIIIvaG8hzjhX_ddb608f3@android]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [DZhaeX4Y853nIIIvaG8hzjhX_ddb608f3@windows]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [HNsRgXskJVN5RJlSCNcav7_z_ccd4fd47@ios]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [HNsRgXskJVN5RJlSCNcav7_z_ccd4fd47@android]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [HNsRgXskJVN5RJlSCNcav7_z_ccd4fd47@windows]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [G2lNicNz6RpKVebvywUWjHzP_324c0670@ios]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [G2lNicNz6RpKVebvywUWjHzP_324c0670@android]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [G2lNicNz6RpKVebvywUWjHzP_324c0670@windows]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [A0qVYUpcU7XFH8HQtpe0lIi3_64d43770@ios]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [A0qVYUpcU7XFH8HQtpe0lIi3_64d43770@android]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [A0qVYUpcU7XFH8HQtpe0lIi3_64d43770@windows]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [B5JGSYVXKFbkcC5-BTNT9MuZ_a0a60a4c@ios]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [B5JGSYVXKFbkcC5-BTNT9MuZ_a0a60a4c@android]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [B5JGSYVXKFbkcC5-BTNT9MuZ_a0a60a4c@windows]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [ByKSOQaJjDWhOvsgDK7ozgc9_83d48a22@ios]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [ByKSOQaJjDWhOvsgDK7ozgc9_83d48a22@android]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [ByKSOQaJjDWhOvsgDK7ozgc9_83d48a22@windows]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [EdFFEb2H8Vm9igsNWAPOygaV_43cac665@ios]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [EdFFEb2H8Vm9igsNWAPOygaV_43cac665@android]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [EdFFEb2H8Vm9igsNWAPOygaV_43cac665@windows]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [GaZ6ac7Vi9gkwicJamvAjANQ_bd24312d@ios]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [GaZ6ac7Vi9gkwicJamvAjANQ_bd24312d@android]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [GaZ6ac7Vi9gkwicJamvAjANQ_bd24312d@windows]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [EW_XeT-3nVwsWfQarhYa3z-0_3775e37d@ios]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [EW_XeT-3nVwsWfQarhYa3z-0_3775e37d@android]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [EW_XeT-3nVwsWfQarhYa3z-0_3775e37d@windows]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [BVISyTDMwt4skjiRmzy0iyrR_9cca4677@ios]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [BVISyTDMwt4skjiRmzy0iyrR_9cca4677@android]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [BVISyTDMwt4skjiRmzy0iyrR_9cca4677@windows]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [AhInQWXRFc_2N47yRiOkyoaB_83ac7fa9@ios]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [AhInQWXRFc_2N47yRiOkyoaB_83ac7fa9@android]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [AhInQWXRFc_2N47yRiOkyoaB_83ac7fa9@windows]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [Fyc2kaiPb5B2LivJGXw4GJt8_bb03598c@ios]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [Fyc2kaiPb5B2LivJGXw4GJt8_bb03598c@android]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [Fyc2kaiPb5B2LivJGXw4GJt8_bb03598c@windows]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [EUm5kVYJfKpjHskT9iBRB7Hx_d4866d4d@ios]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [EUm5kVYJfKpjHskT9iBRB7Hx_d4866d4d@android]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [EUm5kVYJfKpjHskT9iBRB7Hx_d4866d4d@windows]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [A-GcsQupk7PBA_Fukf89sTMv_64af1cd4@ios]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [A-GcsQupk7PBA_Fukf89sTMv_64af1cd4@android]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [A-GcsQupk7PBA_Fukf89sTMv_64af1cd4@windows]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [HdkPcU1ekEYudmPBqcnmCdRr_6fde30e2@ios]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [HdkPcU1ekEYudmPBqcnmCdRr_6fde30e2@android]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [HdkPcU1ekEYudmPBqcnmCdRr_6fde30e2@windows]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [B0shIZ0cTeUIYsLJJh9_-EDa_fd9a8fe1@ios]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [B0shIZ0cTeUIYsLJJh9_-EDa_fd9a8fe1@android]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [B0shIZ0cTeUIYsLJJh9_-EDa_fd9a8fe1@windows]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [EQwUIZf4bs7msepvNvbixuAR_8c823412@ios]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [EQwUIZf4bs7msepvNvbixuAR_8c823412@android]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [EQwUIZf4bs7msepvNvbixuAR_8c823412@windows]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [EKsO6VC6J_dkPnufL9AFf54g_22ac3e68@ios]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [EKsO6VC6J_dkPnufL9AFf54g_22ac3e68@android]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [EKsO6VC6J_dkPnufL9AFf54g_22ac3e68@windows]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [AdG3cZApFMLVQ_pIzODQgj2m_68bd05af@ios]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [AdG3cZApFMLVQ_pIzODQgj2m_68bd05af@android]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [WARN]     压缩失败 [AdG3cZApFMLVQ_pIzODQgj2m_68bd05af@windows]: Skipped due to cooking limit
+[2026-04-08 19:30:05] 📋   [INFO]   批量压缩完成: 总计 111, 成功 45, 缓存命中 35 (31.5%), hash索引命中 30, 错误 66
+[2026-04-08 19:30:05] 📋   [INFO]   完成 (2.53s)
+[2026-04-08 19:30:05] 📋   [INFO] [12/16] 国际化处理...
+[2026-04-08 19:30:05] 📋   [INFO]   跳过国际化：i18n.json enabled=false
+[2026-04-08 19:30:05] 📋   [WARN]   跳过（前置条件不满足） (0.01s)
+[2026-04-08 19:30:05] 📋   [INFO] [13/16] 生成产物...
+[2026-04-08 19:30:05] 📋   [INFO]   清空版本目录: /workspace/.project/../dist/1.0.0
+[2026-04-08 19:30:05] 📋   [INFO]   生成: manifest-2a4c1d98.json (client)
+[2026-04-08 19:30:05] 📋   [INFO]   生成: manifest-f8a13976.json (server)
+[2026-04-08 19:30:05] 📋   [INFO]   生成: engine-ef9e23e2.json
+[2026-04-08 19:30:05] 📋   [INFO]   生成: version.json
+[2026-04-08 19:30:05] 📋   [INFO]   生成: project.json
+[2026-04-08 19:30:05] 📋   [INFO]   生成: dist/project.json
+[2026-04-08 19:30:05] 📋   [INFO]   生成 tag: latest.json (默认)
+[2026-04-08 19:30:05] 📋   [INFO]   生成 tag: 1.x.x.json (默认)
+[2026-04-08 19:30:05] 📋   [INFO]   完成 (0.25s)
+[2026-04-08 19:30:05] 📋   [INFO] [14/16] 复制资产...
+[2026-04-08 19:30:05] 📋   [INFO]   复制资源到: /workspace/.project/../dist/assets
+[2026-04-08 19:30:05] 📋   [INFO]   已复制: 33 个文件
+[2026-04-08 19:30:05] 📋   [INFO]   完成 (0.93s)
+[2026-04-08 19:30:05] 📋   [INFO] [15/16] 清理旧版本...
+[2026-04-08 19:30:05] 📋   [INFO]   清理完成: 0 个旧版本, 1 个孤立资源
+[2026-04-08 19:30:06] 📋   [INFO]   完成 (0.13s)
+[2026-04-08 19:30:06] 📋   [INFO] [16/16] 输出统计...
+[2026-04-08 19:30:06] 📋   
+[2026-04-08 19:30:06] 📋   === 构建统计 ===
+[2026-04-08 19:30:06] 📋   项目根目录: /workspace
+[2026-04-08 19:30:06] 📋   目标平台: all
+[2026-04-08 19:30:06] 📋   资产目录: ../assets, ../scripts
+[2026-04-08 19:30:06] 📋   
+[2026-04-08 19:30:06] 📋   资源统计:
+[2026-04-08 19:30:06] 📋     扫描文件: 129
+[2026-04-08 19:30:06] 📋     发现资源: 1364
+[2026-04-08 19:30:06] 📋     项目资源大小: 1.29 MB
+[2026-04-08 19:30:06] 📋     忽略文件: 0
+[2026-04-08 19:30:06] 📋     生成 meta: 27
+[2026-04-08 19:30:06] 📋     Client 资源: 1364
+[2026-04-08 19:30:06] 📋     Server 资源: 1
+[2026-04-08 19:30:06] 📋     复制资源: 33
+[2026-04-08 19:30:06] 📋     纹理压缩: 15
+[2026-04-08 19:30:06] 📋   
+[2026-04-08 19:30:06] 📋   Meta 缓存:
+[2026-04-08 19:30:06] 📋   
+[2026-04-08 19:30:06] 📋   === Meta 缓存统计 ===
+[2026-04-08 19:30:06] 📋   本地缓存: 78 条目
+[2026-04-08 19:30:06] 📋   命中次数: 0
+[2026-04-08 19:30:06] 📋   未命中次数: 78
+[2026-04-08 19:30:06] 📋   命中率: 0.0%
+[2026-04-08 19:30:06] 📋   加载次数: 78
+[2026-04-08 19:30:06] 📋   刷新次数: 0
+[2026-04-08 19:30:06] 📋   
+[2026-04-08 19:30:06] 📋   远端来源: 3 个
+[2026-04-08 19:30:06] 📋     - engine: 4 个文件
+[2026-04-08 19:30:06] 📋     - engine-res: 1224 个文件
+[2026-04-08 19:30:06] 📋     - official-res: 26579 个文件
+[2026-04-08 19:30:06] 📋   
+[2026-04-08 19:30:06] 📋   构建完成!
+[2026-04-08 19:30:06] 📋     版本: 1.0.0
+[2026-04-08 19:30:06] 📋     输出: /workspace/.project/../dist/1.0.0
+[2026-04-08 19:30:06] 📋     Client: manifest-2a4c1d98.json
+[2026-04-08 19:30:06] 📋     Server: manifest-f8a13976.json
+[2026-04-08 19:30:06] 📋   [INFO]   完成 (0.00s)
+[2026-04-08 19:30:06] 📋   [INFO] 总耗时: 6.57s
+[2026-04-08 19:30:06] 📋   [INFO] 构建完成!
+[2026-04-08 19:30:06] 📋 设置目录权限...
+[2026-04-08 19:30:06] 📋 设置 dist 目录权限: /workspace/dist
+[2026-04-08 19:30:06] ✅ dist 目录权限已设置 (root:root, 755/644)
+[2026-04-08 19:30:06] 📋 设置目录权限: /workspace/logs
+[2026-04-08 19:30:06] 📋 设置目录权限: /workspace/.project
+[2026-04-08 19:30:06] 📋 设置目录权限: /workspace/.build
+[2026-04-08 19:30:07] ✅ 非 dist 目录权限已设置 (1000:1000)
+[2026-04-08 19:30:07] 📋 ⏱️  耗时: 10.53s
+[2026-04-08 19:30:07] ✅ ==================================================
+[2026-04-08 19:30:07] ✅ 构建完成！总耗时: 10.88s
+[2026-04-08 19:30:07] ✅ ==================================================
