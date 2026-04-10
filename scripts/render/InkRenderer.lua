@@ -15,14 +15,15 @@ local imgLoaded = false
 --- 图标贴图路径映射
 local IMAGE_PATHS = {
     -- 资源（道具图标类 - 透明底+手写感+色彩克制风格）
-    lingshi    = "image/items/item_lingshi_20260408114828.png",
-    tianjing   = "image/items/item_tianjing_20260408114734.png",
-    shouhun    = "image/items/item_shouhun_20260408114716.png",
-    traceAsh   = "image/items/item_traceash_20260408114753.png",
-    mirrorSand = "image/items/item_mirrorsand_20260408114731.png",
-    soulCharm  = "image/items/item_soulcharm_20260408114727.png",
-    beastEye   = "image/items/item_beasteye_20260408114715.png",
-    sealEcho   = "image/items/item_sealecho_20260408114753.png",
+    lingshi    = "image/items/item_lingshi_20260410061233.png",
+    tianjing   = "image/items/item_tianjing_20260410061251.png",
+    shouhun    = "image/items/item_shouhun_20260410062010.png",
+    traceAsh   = "image/items/item_traceash_20260410062409.png",
+    mirrorSand = "image/items/item_mirrorsand_20260410064359.png",
+    soulCharm  = "image/items/item_soulcharm_20260410070323.png",
+    beastEye   = "image/items/item_beasteye_20260410072518.png",
+    sealEcho   = "image/items/item_sealecho_20260410073607.png",
+    busicao    = "image/items/item_busicao_20260410075346.png",
     -- 线索（透明底+道具图标类风格）
     footprint  = "image/clues/clue_footprint_20260408114944.png",
     resonance  = "image/clues/clue_resonance_20260408115002.png",
