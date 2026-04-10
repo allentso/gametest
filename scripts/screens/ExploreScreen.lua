@@ -1769,19 +1769,29 @@ function ExploreScreen:renderEntities(vg, logW, logH, t)
     for _, beast in ipairs(self.beasts) do
         if beast.aiState ~= "captured" and beast.aiState ~= "hidden" then
             local normalVisible = FogOfWar.isEntityVisible(beast.x, beast.y) and Camera.inView(beast.x, beast.y)
-            local eyeRevealed = beastEyeActive and Camera.inView(beast.x, beast.y) and not beast.invisible
+            local eyeRevealed = beastEyeActive and Camera.inView(beast.x, beast.y)
             if normalVisible or eyeRevealed then
                 local sx, sy = Camera.toScreen(beast.x, beast.y)
-                -- 兽目珠揭示（非正常视野）：金色灵光标记
-                if eyeRevealed and not normalVisible then
-                    local pulseR = ppu * beast.bodySize * 1.5 + math.sin(t * 4) * ppu * 0.1
+                -- 兽目珠揭示：金色灵光标记（视野外异兽画光环，隐形异兽也显形）
+                if eyeRevealed then
+                    local baseR = ppu * beast.bodySize * 1.8
+                    local pulseR = baseR + math.sin(t * 4) * ppu * 0.15
+                    -- 外圈金色光晕（填充）
+                    local glowPaint = nvgRadialGradient(vg, sx, sy, pulseR * 0.3, pulseR,
+                        nvgRGBAf(0.90, 0.75, 0.15, 0.35 + math.sin(t * 3) * 0.1),
+                        nvgRGBAf(0.85, 0.65, 0.10, 0))
                     nvgBeginPath(vg)
                     nvgCircle(vg, sx, sy, pulseR)
-                    nvgStrokeColor(vg, nvgRGBAf(0.85, 0.70, 0.20, 0.4 + math.sin(t * 3) * 0.15))
-                    nvgStrokeWidth(vg, 1.5)
+                    nvgFillPaint(vg, glowPaint)
+                    nvgFill(vg)
+                    -- 内圈描边
+                    nvgBeginPath(vg)
+                    nvgCircle(vg, sx, sy, baseR * 0.6)
+                    nvgStrokeColor(vg, nvgRGBAf(0.95, 0.80, 0.20, 0.6 + math.sin(t * 5) * 0.15))
+                    nvgStrokeWidth(vg, 2.0)
                     nvgStroke(vg)
                 end
-                if beast.invisible then
+                if beast.invisible and not eyeRevealed then
                     -- 隐形异兽：仅显示草叶扰动粒子
                     for pi = 1, 3 do
                         local px = sx + math.sin(t * 2 + pi * 2.1) * ppu * 0.4

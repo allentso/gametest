@@ -1480,7 +1480,7 @@ end
 -- 异兽贴图：加载 & 绘制（矢量降级由调用方处理）
 ------------------------------------------------------------
 
--- { [beastId] = { normal = h, yiwen = h, xuancai = h, xuancai_yiwen = h } }
+-- { [beastId] = { normal = {h=handle, ratio=w/h}, ... } }
 local beastImgHandles = {}
 local beastImgInited = false
 
@@ -1500,11 +1500,10 @@ function BeastRenderer.initImages(vg)
         local byVar = {}
         for _, row in ipairs(BEAST_IMG_VARIANTS) do
             local path = "image/beasts/beast_" .. bd.id .. row.suffix .. ".png"
-            if cache:Exists(path) then
-                local handle = nvgCreateImage(vg, path, 0)
-                if handle and handle > 0 then
-                    byVar[row.key] = handle
-                end
+            -- 直接尝试加载，通过 handle 判断是否成功（cache:Exists 对部分路径误报 false）
+            local handle = nvgCreateImage(vg, path, 0)
+            if handle and handle > 0 then
+                byVar[row.key] = { h = handle, ratio = nil } -- ratio 延迟到首次绘制时获取
             end
         end
         if next(byVar) then
@@ -1513,7 +1512,7 @@ function BeastRenderer.initImages(vg)
     end
 end
 
-local function resolveBeastImageHandle(beastId, variant)
+local function resolveBeastImageEntry(beastId, variant)
     local byVar = beastImgHandles[beastId]
     if not byVar then return nil end
     variant = variant or "normal"
@@ -1522,20 +1521,37 @@ end
 
 --- 检查 drawImage 是否能绘出（含 normal 回退）
 function BeastRenderer.hasImage(beastId, variant)
-    return resolveBeastImageHandle(beastId, variant) ~= nil
+    return resolveBeastImageEntry(beastId, variant) ~= nil
 end
 
---- 绘制异兽贴图（圆角矩形，居中）。返回 true 表示绘制成功。
+--- 绘制异兽贴图（按实际宽高比，居中，限高 size）。返回 true 表示绘制成功。
 --- variant: normal | yiwen | xuancai | xuancai_yiwen；缺贴图时回退 normal
 function BeastRenderer.drawImage(vg, beastId, cx, cy, size, alpha, variant)
-    local handle = resolveBeastImageHandle(beastId, variant)
-    if not handle then return false end
+    local entry = resolveBeastImageEntry(beastId, variant)
+    if not entry then return false end
     alpha = alpha or 1.0
-    local half = size * 0.5
-    local x, y = cx - half, cy - half
-    local paint = nvgImagePattern(vg, x, y, size, size, 0, handle, alpha)
+    -- 延迟获取宽高比（首次绘制时图片已完成加载）
+    if not entry.ratio then
+        local iw, ih = nvgImageSize(vg, entry.h)
+        entry.ratio = (ih and ih > 0 and iw and iw > 0) and (iw / ih) or 1.0
+    end
+    local ratio = entry.ratio
+    local drawW, drawH
+    if ratio >= 1.0 then
+        -- 横图：宽度=size，高度按比例缩小
+        drawW = size
+        drawH = size / ratio
+    else
+        -- 竖图：高度=size，宽度按比例缩小
+        drawH = size
+        drawW = size * ratio
+    end
+    local x = cx - drawW * 0.5
+    local y = cy - drawH * 0.5
+    local r = math.min(drawW, drawH) * 0.06
+    local paint = nvgImagePattern(vg, x, y, drawW, drawH, 0, entry.h, alpha)
     nvgBeginPath(vg)
-    nvgRoundedRect(vg, x, y, size, size, size * 0.06)
+    nvgRoundedRect(vg, x, y, drawW, drawH, r)
     nvgFillPaint(vg, paint)
     nvgFill(vg)
     return true
