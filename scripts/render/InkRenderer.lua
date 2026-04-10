@@ -30,13 +30,7 @@ local IMAGE_PATHS = {
     scentMark  = "image/clues/clue_scentmark_20260408114954.png",
     -- 撤离点（透明底）
     evac       = "image/evacuation/evac_portal_20260408115151.png",
-    -- 异兽与实体（透明底+白描+飞白风格）
-    beastFox   = "image/beasts/beast_fox_20260408115328.png",
-    beastStone = "image/beasts/beast_stone_20260408115133.png",
-    player     = "image/players/player_sealer_20260408115130.png",
-    -- 环境地貌纹理（透明底+水墨晕染质感）
-    envGrass   = "image/environment/env_grass_20260408115153.png",
-    envRock    = "image/environment/env_rock_20260408115121.png",
+
 }
 
 --- 加载所有贴图（仅调用一次）
@@ -628,6 +622,8 @@ function InkRenderer.drawResource(vg, res, sx, sy, ppu, t, playerDist)
         glowColor = InkPalette.azure;  glowAlpha = 0.20
     elseif res.type == "soulCharm" then
         glowColor = InkPalette.gold;   glowAlpha = 0.20
+    elseif res.type == "busicao" then
+        glowColor = InkPalette.jade;   glowAlpha = 0.25
     end
 
     local pulse = math.sin(t * 2.0 + (res.x or 0) * 3.7) * 0.04
@@ -814,6 +810,45 @@ function InkRenderer.drawResource(vg, res, sx, sy, ppu, t, playerDist)
         nvgCircle(vg, sx, cy + ch * 0.55, r * 0.08)
         nvgFillColor(vg, nvgRGBAf(cin.r, cin.g, cin.b, 0.55))
         nvgFill(vg)
+
+    elseif res.type == "busicao" then
+        -- 不死草：翡翠草叶从中心向上散开，生机勃勃
+        local jade = InkPalette.jade
+        nvgLineCap(vg, NVG_ROUND)
+        -- 三片草叶（左、中、右）
+        local leaves = { -0.35, 0, 0.30 }
+        for i, angle in ipairs(leaves) do
+            local baseA = angle + math.sin(t * 1.5 + i * 1.2) * 0.06
+            local lx = sx + math.sin(baseA) * r * 0.10
+            local ly = cy + r * 0.20
+            local tipX = sx + math.sin(baseA) * r * 0.28
+            local tipY = cy - r * 0.42
+            local ctrlX = sx + math.sin(baseA) * r * 0.22
+            local ctrlY = cy - r * 0.10
+            nvgBeginPath(vg)
+            nvgMoveTo(vg, lx, ly)
+            nvgQuadTo(vg, ctrlX, ctrlY, tipX, tipY)
+            nvgStrokeWidth(vg, 2.2 - i * 0.3)
+            nvgStrokeColor(vg, nvgRGBAf(jade.r, jade.g, jade.b, 0.70))
+            nvgStroke(vg)
+        end
+        -- 中心根部小圆
+        nvgBeginPath(vg)
+        nvgCircle(vg, sx, cy + r * 0.18, r * 0.08)
+        nvgFillColor(vg, nvgRGBAf(jade.r, jade.g, jade.b, 0.45))
+        nvgFill(vg)
+        -- 顶部灵光微粒
+        local sparkle = 0.35 + math.sin(t * 2.8) * 0.18
+        for i = 1, 3 do
+            local hash = ((res.x or 0) * 11 + i * 37) % 100
+            local px = sx + (hash % 20 - 10) * r * 0.025
+            local py = cy - r * (0.30 + i * 0.06)
+            local drift = math.sin(t * 2.0 + i * 2.1) * r * 0.03
+            nvgBeginPath(vg)
+            nvgCircle(vg, px + drift, py, r * 0.03)
+            nvgFillColor(vg, nvgRGBAf(1, 1, 0.85, sparkle - i * 0.06))
+            nvgFill(vg)
+        end
     end
 
     nvgRestore(vg)

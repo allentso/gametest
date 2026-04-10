@@ -1476,4 +1476,54 @@ function BeastRenderer.drawXuancaiAura(vg, sx, sy, r, t, beast)
     nvgRestore(vg)
 end
 
+------------------------------------------------------------
+-- 异兽贴图：加载 & 绘制（矢量降级由调用方处理）
+------------------------------------------------------------
+
+local beastImgHandles = {}   -- { beastId = nvg_image_handle }
+local beastImgInited = false
+
+--- 扫描 image/beasts/beast_{id}.png，加载所有已有贴图（仅调用一次）
+function BeastRenderer.initImages(vg)
+    if beastImgInited then return end
+    beastImgInited = true
+    local BeastData = require("data.BeastData")
+    for _, bd in ipairs(BeastData) do
+        local path = "image/beasts/beast_" .. bd.id .. ".png"
+        if cache:Exists(path) then
+            local handle = nvgCreateImage(vg, path, 0)
+            if handle and handle > 0 then
+                beastImgHandles[bd.id] = handle
+            end
+        end
+    end
+end
+
+--- 检查异兽是否有贴图
+function BeastRenderer.hasImage(beastId)
+    return beastImgHandles[beastId] ~= nil
+end
+
+--- 绘制异兽贴图（圆角矩形，居中）。返回 true 表示绘制成功。
+--- @param vg userdata NanoVG context
+--- @param beastId string 异兽 id (如 "019")
+--- @param cx number 中心 x
+--- @param cy number 中心 y
+--- @param size number 绘制区域宽高（正方形）
+--- @param alpha number 透明度 0~1
+--- @return boolean 是否成功绘制
+function BeastRenderer.drawImage(vg, beastId, cx, cy, size, alpha)
+    local handle = beastImgHandles[beastId]
+    if not handle then return false end
+    alpha = alpha or 1.0
+    local half = size * 0.5
+    local x, y = cx - half, cy - half
+    local paint = nvgImagePattern(vg, x, y, size, size, 0, handle, alpha)
+    nvgBeginPath(vg)
+    nvgRoundedRect(vg, x, y, size, size, size * 0.06)
+    nvgFillPaint(vg, paint)
+    nvgFill(vg)
+    return true
+end
+
 return BeastRenderer

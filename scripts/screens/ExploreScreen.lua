@@ -145,7 +145,6 @@ function ExploreScreen:onEnter()
 
     EventBus.on("beast_captured", function(contract, quality)
         SessionState.addContract(contract)
-        self:addToast("捕获成功！" .. contract.name)
         TutorialSystem.checkTrigger("captured")
     end, self)
 

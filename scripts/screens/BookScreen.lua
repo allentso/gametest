@@ -4,6 +4,7 @@ local BrushStrokes = require("render.BrushStrokes")
 local ScreenManager = require("systems.ScreenManager")
 local GameState = require("systems.GameState")
 local BeastData = require("data.BeastData")
+local BeastRenderer = require("render.BeastRenderer")
 
 local BookScreen = {}
 BookScreen.__index = BookScreen
@@ -510,6 +511,29 @@ function BookScreen:renderDetail(vg, logW, logH, t)
     nvgScissor(vg, cardX, cardY, cardW, cardH)
 
     local contentY = cardY + 24 - self.detailScrollY
+
+    -- 异兽形态（贴图优先，矢量降级）
+    BeastRenderer.initImages(vg)
+    local portraitSize = math.min(cardW * 0.45, 130)
+    local portraitCx = cardX + cardW * 0.5
+    local portraitCy = contentY + portraitSize * 0.5
+    nvgSave(vg)
+    nvgGlobalAlpha(vg, alpha)
+    if not BeastRenderer.drawImage(vg, beast.id, portraitCx, portraitCy, portraitSize, 1.0) then
+        -- 无贴图：矢量降级
+        ---@type table
+        local drawBeast = {
+            bodySize = beast.bodySize or 0.55,
+            quality = entry and entry.bestQuality or "R",
+            type = beast.type or beast.id,
+            id = beast.id,
+            variant = "normal",
+            aiState = "idle",
+        }
+        BeastRenderer.draw(vg, drawBeast, portraitCx, portraitCy, portraitSize * 0.55, t)
+    end
+    nvgRestore(vg)
+    contentY = contentY + portraitSize + 16
 
     -- 属性标签 + 名称
     local elemColor = ELEM_COLORS[beast.element] or P.inkMedium
