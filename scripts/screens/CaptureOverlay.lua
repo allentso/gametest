@@ -190,7 +190,7 @@ function CaptureOverlay:render(vg, logW, logH, t)
             BeastRenderer.initImages(vg)
             nvgSave(vg)
             nvgGlobalAlpha(vg, shapeAlpha)
-            if not BeastRenderer.drawImage(vg, self.beast.id, cx, cy, 120, 1.0) then
+            if not BeastRenderer.drawImage(vg, self.beast.id, cx, cy, 120, 1.0, self.variant) then
                 -- 无贴图：矢量降级
                 ---@type table
                 local drawBeast = {

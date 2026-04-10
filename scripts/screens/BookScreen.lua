@@ -29,6 +29,17 @@ local VARIANT_LABELS = {
     { key = "xuancai_yiwen", label = "玄采异文" },
 }
 
+local PORTRAIT_VARIANT_ORDER = { "xuancai_yiwen", "xuancai", "yiwen", "normal" }
+
+local function portraitVariantForEntry(entry)
+    local v = entry and entry.variants
+    if not v then return "normal" end
+    for _, key in ipairs(PORTRAIT_VARIANT_ORDER) do
+        if (v[key] or 0) > 0 then return key end
+    end
+    return "normal"
+end
+
 function BookScreen.new(params)
     local self = setmetatable({}, BookScreen)
     self.fadeIn = 0
@@ -519,7 +530,7 @@ function BookScreen:renderDetail(vg, logW, logH, t)
     local portraitCy = contentY + portraitSize * 0.5
     nvgSave(vg)
     nvgGlobalAlpha(vg, alpha)
-    if not BeastRenderer.drawImage(vg, beast.id, portraitCx, portraitCy, portraitSize, 1.0) then
+    if not BeastRenderer.drawImage(vg, beast.id, portraitCx, portraitCy, portraitSize, 1.0, portraitVariantForEntry(entry)) then
         -- 无贴图：矢量降级
         ---@type table
         local drawBeast = {

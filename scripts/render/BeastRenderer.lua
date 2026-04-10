@@ -1480,40 +1480,55 @@ end
 -- 异兽贴图：加载 & 绘制（矢量降级由调用方处理）
 ------------------------------------------------------------
 
-local beastImgHandles = {}   -- { beastId = nvg_image_handle }
+-- { [beastId] = { normal = h, yiwen = h, xuancai = h, xuancai_yiwen = h } }
+local beastImgHandles = {}
 local beastImgInited = false
 
---- 扫描 image/beasts/beast_{id}.png，加载所有已有贴图（仅调用一次）
+local BEAST_IMG_VARIANTS = {
+    { key = "normal",        suffix = "" },
+    { key = "yiwen",         suffix = "_yiwen" },
+    { key = "xuancai",       suffix = "_xuancai" },
+    { key = "xuancai_yiwen", suffix = "_xuancai_yiwen" },
+}
+
+--- 扫描 image/beasts/beast_{id}.png 与变体后缀贴图，加载所有已有文件（仅调用一次）
 function BeastRenderer.initImages(vg)
     if beastImgInited then return end
     beastImgInited = true
     local BeastData = require("data.BeastData")
     for _, bd in ipairs(BeastData) do
-        local path = "image/beasts/beast_" .. bd.id .. ".png"
-        if cache:Exists(path) then
-            local handle = nvgCreateImage(vg, path, 0)
-            if handle and handle > 0 then
-                beastImgHandles[bd.id] = handle
+        local byVar = {}
+        for _, row in ipairs(BEAST_IMG_VARIANTS) do
+            local path = "image/beasts/beast_" .. bd.id .. row.suffix .. ".png"
+            if cache:Exists(path) then
+                local handle = nvgCreateImage(vg, path, 0)
+                if handle and handle > 0 then
+                    byVar[row.key] = handle
+                end
             end
+        end
+        if next(byVar) then
+            beastImgHandles[bd.id] = byVar
         end
     end
 end
 
---- 检查异兽是否有贴图
-function BeastRenderer.hasImage(beastId)
-    return beastImgHandles[beastId] ~= nil
+local function resolveBeastImageHandle(beastId, variant)
+    local byVar = beastImgHandles[beastId]
+    if not byVar then return nil end
+    variant = variant or "normal"
+    return byVar[variant] or byVar.normal
+end
+
+--- 检查 drawImage 是否能绘出（含 normal 回退）
+function BeastRenderer.hasImage(beastId, variant)
+    return resolveBeastImageHandle(beastId, variant) ~= nil
 end
 
 --- 绘制异兽贴图（圆角矩形，居中）。返回 true 表示绘制成功。
---- @param vg userdata NanoVG context
---- @param beastId string 异兽 id (如 "019")
---- @param cx number 中心 x
---- @param cy number 中心 y
---- @param size number 绘制区域宽高（正方形）
---- @param alpha number 透明度 0~1
---- @return boolean 是否成功绘制
-function BeastRenderer.drawImage(vg, beastId, cx, cy, size, alpha)
-    local handle = beastImgHandles[beastId]
+--- variant: normal | yiwen | xuancai | xuancai_yiwen；缺贴图时回退 normal
+function BeastRenderer.drawImage(vg, beastId, cx, cy, size, alpha, variant)
+    local handle = resolveBeastImageHandle(beastId, variant)
     if not handle then return false end
     alpha = alpha or 1.0
     local half = size * 0.5
