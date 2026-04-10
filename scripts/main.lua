@@ -53,6 +53,10 @@ function Start()
     local InkRenderer = require("render.InkRenderer")
     InkRenderer.initImages(vg)
 
+    -- 预加载异兽贴图（启动时加载，确保首次绘制时图片已就绪）
+    local BeastRenderer = require("render.BeastRenderer")
+    BeastRenderer.initImages(vg)
+
     -- 分辨率初始化
     updateResolution()
 

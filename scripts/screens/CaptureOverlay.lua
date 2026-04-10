@@ -187,7 +187,6 @@ function CaptureOverlay:render(vg, logW, logH, t)
         -- 异兽形态（贴图优先，矢量降级）
         if p > 0.1 then
             local shapeAlpha = math.min(1, (p - 0.1) / 0.6)
-            BeastRenderer.initImages(vg)
             nvgSave(vg)
             nvgGlobalAlpha(vg, shapeAlpha)
             if not BeastRenderer.drawImage(vg, self.beast.id, cx, cy, 120, 1.0, self.variant) then

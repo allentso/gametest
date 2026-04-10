@@ -1483,6 +1483,7 @@ end
 -- { [beastId] = { normal = {h=handle, ratio=w/h}, ... } }
 local beastImgHandles = {}
 local beastImgInited = false
+local beastImgVg = nil
 
 local BEAST_IMG_VARIANTS = {
     { key = "normal",        suffix = "" },
@@ -1491,19 +1492,44 @@ local BEAST_IMG_VARIANTS = {
     { key = "xuancai_yiwen", suffix = "_xuancai_yiwen" },
 }
 
---- 扫描 image/beasts/beast_{id}.png 与变体后缀贴图，加载所有已有文件（仅调用一次）
+--- 先扫描目录，构建实际存在的文件集合，避免对不存在的文件调用 nvgCreateImage 产生错误日志
+local function scanExistingBeastFiles()
+    local existing = {}
+    local BeastData = require("data.BeastData")
+    for _, bd in ipairs(BeastData) do
+        for _, row in ipairs(BEAST_IMG_VARIANTS) do
+            local path = "image/beasts/beast_" .. bd.id .. row.suffix .. ".png"
+            if cache:Exists(path) then
+                existing[path] = true
+            else
+                local res = cache:GetResource("Image", path, false)
+                if res then
+                    existing[path] = true
+                end
+            end
+        end
+    end
+    return existing
+end
+
+--- 加载所有已有异兽贴图（应在 main.lua 启动时调用，给图片充足加载时间）
 function BeastRenderer.initImages(vg)
     if beastImgInited then return end
     beastImgInited = true
+    beastImgVg = vg
+    local existing = scanExistingBeastFiles()
     local BeastData = require("data.BeastData")
     for _, bd in ipairs(BeastData) do
         local byVar = {}
         for _, row in ipairs(BEAST_IMG_VARIANTS) do
             local path = "image/beasts/beast_" .. bd.id .. row.suffix .. ".png"
-            -- 直接尝试加载，通过 handle 判断是否成功（cache:Exists 对部分路径误报 false）
-            local handle = nvgCreateImage(vg, path, 0)
-            if handle and handle > 0 then
-                byVar[row.key] = { h = handle, ratio = nil } -- ratio 延迟到首次绘制时获取
+            if existing[path] then
+                local handle = nvgCreateImage(vg, path, 0)
+                if handle and handle > 0 then
+                    local iw, ih = nvgImageSize(vg, handle)
+                    local ratio = (ih and ih > 0 and iw and iw > 0) and (iw / ih) or (16 / 9)
+                    byVar[row.key] = { h = handle, ratio = ratio }
+                end
             end
         end
         if next(byVar) then
@@ -1530,19 +1556,20 @@ function BeastRenderer.drawImage(vg, beastId, cx, cy, size, alpha, variant)
     local entry = resolveBeastImageEntry(beastId, variant)
     if not entry then return false end
     alpha = alpha or 1.0
-    -- 延迟获取宽高比（首次绘制时图片已完成加载）
-    if not entry.ratio then
-        local iw, ih = nvgImageSize(vg, entry.h)
-        entry.ratio = (ih and ih > 0 and iw and iw > 0) and (iw / ih) or 1.0
+    local ratio = entry.ratio or (16 / 9)
+    -- 重试获取：首次加载时图片可能未就绪，后续帧补正
+    if ratio == (16 / 9) and beastImgVg then
+        local iw, ih = nvgImageSize(beastImgVg, entry.h)
+        if ih and ih > 0 and iw and iw > 0 then
+            entry.ratio = iw / ih
+            ratio = entry.ratio
+        end
     end
-    local ratio = entry.ratio
     local drawW, drawH
     if ratio >= 1.0 then
-        -- 横图：宽度=size，高度按比例缩小
         drawW = size
         drawH = size / ratio
     else
-        -- 竖图：高度=size，宽度按比例缩小
         drawH = size
         drawW = size * ratio
     end

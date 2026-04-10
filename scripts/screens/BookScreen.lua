@@ -524,7 +524,6 @@ function BookScreen:renderDetail(vg, logW, logH, t)
     local contentY = cardY + 24 - self.detailScrollY
 
     -- 异兽形态（贴图优先，矢量降级）
-    BeastRenderer.initImages(vg)
     local portraitSize = math.min(cardW * 0.45, 130)
     local portraitCx = cardX + cardW * 0.5
     local portraitCy = contentY + portraitSize * 0.5
