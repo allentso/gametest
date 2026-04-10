@@ -98,6 +98,7 @@ function SuppressOverlay:handleResult(tapResult)
     elseif tapResult == "fail" then
         self.result = "fail"; self.resultTimer = 0
         self.shakeTimer = 0.15
+        EventBus.emit("suppress_result", "fail")
     elseif tapResult == "hit" then
         self.hitFlashTimer = 0.3; self.shakeTimer = 0.08
     end

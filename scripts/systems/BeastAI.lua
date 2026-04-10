@@ -238,6 +238,15 @@ function BeastAI.update(beast, dt, playerX, playerY, map, options)
         end
     end
 
+    -- 减速效果倒计时
+    if beast.slowTimer and beast.slowTimer > 0 then
+        beast.slowTimer = beast.slowTimer - dt
+        if beast.slowTimer <= 0 then
+            beast.slowTimer = 0
+            beast.slowMul = nil
+        end
+    end
+
     -- 白泽庇护光晕攻击力减弱倒计时
     if beast.atkReductionTimer and beast.atkReductionTimer > 0 then
         beast.atkReductionTimer = beast.atkReductionTimer - dt

@@ -354,7 +354,7 @@ function ExploreScreen:onEnter()
     end, self)
     EventBus.on("beast_stunned", function(data)
         local beast = data.beast
-        if beast and not beast.ccImmune then
+        if beast and not beast.ccImmune and not beast.skillImmune then
             beast.stunTimer = data.duration
             beast.prevAiState = beast.aiState
             beast.aiState = "stunned"
@@ -362,14 +362,14 @@ function ExploreScreen:onEnter()
     end, self)
     EventBus.on("beast_slowed", function(data)
         local beast = data.beast
-        if beast and not beast.skillImmune then
+        if beast and not beast.ccImmune and not beast.skillImmune then
             beast.slowTimer = data.duration
             beast.slowMul = data.speedMul
         end
     end, self)
     EventBus.on("beast_frozen", function(data)
         local beast = data.beast
-        if beast and not beast.ccImmune then
+        if beast and not beast.ccImmune and not beast.skillImmune then
             beast.freezeTimer = data.duration
             beast.prevAiState = beast.aiState
             beast.aiState = "frozen"
@@ -413,6 +413,32 @@ end
 
 function ExploreScreen:onResume()
     self.paused = false
+    if self.pendingSuppressRetry and self.activeBeast then
+        self.pendingSuppressRetry = false
+        local beast = self.activeBeast
+        local hasMirrorSand = SessionState.hasItem("mirrorSand")
+        if hasMirrorSand then
+            SessionState.addItem("mirrorSand", -1)
+        end
+        SuppressSystem.start(beast, hasMirrorSand)
+        local sEffect = getSchoolEffect()
+        if sEffect then
+            if sEffect.qteSpeedMul then
+                SuppressSystem.state.speed = SuppressSystem.state.speed * sEffect.qteSpeedMul
+            end
+            if sEffect.qteZoneMul then
+                local z = SuppressSystem.state.targetZone
+                local center = (z[1] + z[2]) * 0.5
+                local halfW = (z[2] - z[1]) * 0.5 * sEffect.qteZoneMul
+                z[1] = math.max(0.05, center - halfW)
+                z[2] = math.min(0.95, center + halfW)
+            end
+        end
+        local SuppressOverlay = require("screens.SuppressOverlay")
+        ScreenManager.push(SuppressOverlay, { beast = beast })
+    else
+        self.pendingSuppressRetry = false
+    end
 end
 
 ------------------------------------------------------------
@@ -893,7 +919,8 @@ function ExploreScreen:updateInteraction()
     -- 1. 检测附近异兽
     for _, beast in ipairs(self.beasts) do
         if beast.aiState ~= "captured" and beast.aiState ~= "hidden"
-           and beast.aiState ~= "burst" and not beast.fakeDeath then
+           and beast.aiState ~= "burst" and beast.aiState ~= "suppress"
+           and not beast.fakeDeath then
             local dist = BeastAI.distTo(beast, self.playerX, self.playerY)
             if dist < 1.2 and self:hasLineOfSight(self.playerX, self.playerY, beast.x, beast.y) then
                 local contactType = BeastAI.getContactType(beast, self.playerX, self.playerY)
@@ -1170,10 +1197,11 @@ function ExploreScreen:onSuppressResult(result)
            and not self.schoolRetryUsed then
             self.schoolRetryUsed = true
             self:addToast("流派之力！再次压制")
+            self.pendingSuppressRetry = true
         elseif SessionState.hasItem("sealEcho") and not SessionState.sealEchoUsed then
-            -- 检查封印回响
             SessionState.sealEchoUsed = true
             self:addToast("封印回响！可再次压制")
+            self.pendingSuppressRetry = true
         else
             self:addToast("压制失败！")
             -- 猰貐假死：HP归零后重生
